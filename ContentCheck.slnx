@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ContentCheck.Acad/ContentCheck.Acad.csproj" />
+    <Project Path="src/ContentCheck.Core/ContentCheck.Core.csproj" />
+    <Project Path="src/ContentCheck.Import/ContentCheck.Import.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ContentCheck.Tests/ContentCheck.Tests.csproj" />
+  </Folder>
+</Solution>

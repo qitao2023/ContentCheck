@@ -1,0 +1,10 @@
+E:\01-claudecode\ContentCheck\src\ContentCheck.Acad\obj\Release\net472\ContentCheck.Acad.csproj.AssemblyReference.cache
+E:\01-claudecode\ContentCheck\src\ContentCheck.Acad\obj\Release\net472\ContentCheck.Acad.GeneratedMSBuildEditorConfig.editorconfig
+E:\01-claudecode\ContentCheck\src\ContentCheck.Acad\obj\Release\net472\ContentCheck.Acad.AssemblyInfoInputs.cache
+E:\01-claudecode\ContentCheck\src\ContentCheck.Acad\obj\Release\net472\ContentCheck.Acad.AssemblyInfo.cs
+E:\01-claudecode\ContentCheck\src\ContentCheck.Acad\obj\Release\net472\ContentCheck.Acad.csproj.CoreCompileInputs.cache
+E:\01-claudecode\ContentCheck\out\net472\ContentCheck.Acad.dll
+E:\01-claudecode\ContentCheck\out\net472\ContentCheck.Acad.pdb
+E:\01-claudecode\ContentCheck\src\ContentCheck.Acad\obj\Release\net472\ContentC.A6F21B96.Up2Date
+E:\01-claudecode\ContentCheck\src\ContentCheck.Acad\obj\Release\net472\ContentCheck.Acad.dll
+E:\01-claudecode\ContentCheck\src\ContentCheck.Acad\obj\Release\net472\ContentCheck.Acad.pdb

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>UiPreview</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>UiPreview</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 复用真实的主题、表格样式与条文选择框（纯 WinForms） -->
+    <Compile Include="..\..\src\ContentCheck.Acad\UI\UiTheme.cs" Link="UiTheme.cs" />
+    <Compile Include="..\..\src\ContentCheck.Acad\UI\ResultGridSetup.cs" Link="ResultGridSetup.cs" />
+    <Compile Include="..\..\src\ContentCheck.Acad\UI\ProvisionPickerDialog.cs" Link="ProvisionPickerDialog.cs" />
+    <Compile Include="..\..\src\ContentCheck.Acad\UI\SettingsDialog.cs" Link="SettingsDialog.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ContentCheck.Core\ContentCheck.Core.csproj" />
+  </ItemGroup>
+
+</Project>

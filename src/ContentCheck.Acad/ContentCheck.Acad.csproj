@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ContentCheck.Acad</AssemblyName>
+    <RootNamespace>ContentCheck.Acad</RootNamespace>
+    <!-- AutoCAD 2020 is x64; SQLite.Interop switches arch automatically -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <OutputPath>..\..\out\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- AutoCAD 2020 managed assemblies — Copy Local = false -->
+    <Reference Include="AcMgd">
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2020\acmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2020\acdbmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcCoreMgd">
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2020\accoremgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
+    <!-- NPOI is needed for the xlsx report export done inside the plugin -->
+    <PackageReference Include="NPOI" Version="2.7.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ContentCheck.Core\ContentCheck.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>ContentCheck.Core</RootNamespace>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="NPOI" Version="2.7.1" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- net472 SDK 工程不自动引用 System.Net.Http（HttpClient 所在程序集） -->
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+</Project>

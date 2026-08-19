@@ -1,0 +1,117 @@
+{
+  "format": 1,
+  "restore": {
+    "E:\\01-claudecode\\ContentCheck\\tools\\UiPreview\\UiPreview.csproj": {}
+  },
+  "projects": {
+    "E:\\01-claudecode\\ContentCheck\\src\\ContentCheck.Core\\ContentCheck.Core.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\01-claudecode\\ContentCheck\\src\\ContentCheck.Core\\ContentCheck.Core.csproj",
+        "projectName": "ContentCheck.Core",
+        "projectPath": "E:\\01-claudecode\\ContentCheck\\src\\ContentCheck.Core\\ContentCheck.Core.csproj",
+        "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
+        "outputPath": "E:\\01-claudecode\\ContentCheck\\src\\ContentCheck.Core\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net472"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net472": {
+            "targetAlias": "net472",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.200"
+      },
+      "frameworks": {
+        "net472": {
+          "targetAlias": "net472",
+          "dependencies": {
+            "NPOI": {
+              "target": "Package",
+              "version": "[2.7.1, )"
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            },
+            "System.Data.SQLite.Core": {
+              "target": "Package",
+              "version": "[1.0.119, )"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201\\RuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "E:\\01-claudecode\\ContentCheck\\tools\\UiPreview\\UiPreview.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\01-claudecode\\ContentCheck\\tools\\UiPreview\\UiPreview.csproj",
+        "projectName": "UiPreview",
+        "projectPath": "E:\\01-claudecode\\ContentCheck\\tools\\UiPreview\\UiPreview.csproj",
+        "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
+        "outputPath": "E:\\01-claudecode\\ContentCheck\\tools\\UiPreview\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net472"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net472": {
+            "targetAlias": "net472",
+            "projectReferences": {
+              "E:\\01-claudecode\\ContentCheck\\src\\ContentCheck.Core\\ContentCheck.Core.csproj": {
+                "projectPath": "E:\\01-claudecode\\ContentCheck\\src\\ContentCheck.Core\\ContentCheck.Core.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.200"
+      },
+      "frameworks": {
+        "net472": {
+          "targetAlias": "net472",
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201\\RuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "win-x86": {
+          "#import": []
+        }
+      }
+    }
+  }
+}
