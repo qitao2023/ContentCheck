@@ -1,0 +1,22 @@
+# Build outputs
+bin/
+obj/
+out/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Logs
+logs/
+
+# Database
+*.db
+
+# IDE
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
