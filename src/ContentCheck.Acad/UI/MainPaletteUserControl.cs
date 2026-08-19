@@ -27,10 +27,13 @@ namespace ContentCheck.Acad.UI
         Button _btnProv = new Button();
         Button _btnRun = new Button();
         Button _btnExtract = new Button();
+        Button _btnSelectArea = new Button();  // 框选区域按钮
         Button _btnReport = new Button();
         readonly Button _btnSettings = new Button();
         readonly Label _lblStatus = new Label();
         readonly ProgressBar _progress = new ProgressBar();
+        readonly Label _lblPreviewTitle = new Label();
+        readonly RichTextBox _txtPreview = new RichTextBox();
         readonly DataGridView _grid = new DataGridView();
 
         // 结论统计条
@@ -98,9 +101,11 @@ namespace ContentCheck.Acad.UI
                 _modelSheet = DwgTextExtractor.ExtractModel(doc);
                 if (_modelSheet == null || _modelSheet.TextLines.Count == 0)
                 {
+                    UpdatePreview(null);
                     SetStatus("未提取到模型空间文字。");
                     return;
                 }
+                UpdatePreview(_modelSheet);
                 SetStatus($"已提取模型空间文字（{_modelSheet.TextLines.Count} 行）。");
             }
             catch (Exception ex)
@@ -159,16 +164,85 @@ namespace ContentCheck.Acad.UI
                 }
 
                 _selections.TryGetValue(discipline, out var current);
-                var picked = ProvisionPickerDialog.Pick(this, discipline, all, current ?? new HashSet<long>());
-                if (!ReferenceEquals(picked, current))
-                    _selections[discipline] = picked;
+                var res = ProvisionPickerDialog.Pick(this, discipline, all, current ?? new HashSet<long>());
+                if (!ReferenceEquals(res.SelectedIds, current))
+                    _selections[discipline] = res.SelectedIds;
 
-                SetStatus($"已选择 {picked.Count}/{all.Count} 条条文（{discipline}）。");
+                if (res.WriteProvision != null)
+                {
+                    SetStatus($"已选 {res.SelectedIds.Count}/{all.Count} 条条文。请在图纸中指定插入点…");
+                    WriteProvisionToCad(res.WriteProvision);
+                    return;
+                }
+
+                SetStatus($"已选择 {res.SelectedIds.Count}/{all.Count} 条条文（{discipline}）。");
             }
             catch (Exception ex)
             {
                 SetStatus("读取条文失败：" + ex.Message);
             }
+        }
+
+        // ---------- 框选区域 ----------
+
+        /// <summary>
+        /// 点击「框选文字」：通过 SendStringToExecute 在 AutoCAD 命令循环中执行 CC_SELECTTEXT。
+        /// 不能在 WinForms 事件里直接调 Editor.GetSelection()，那会阻塞 UI 线程导致无响应。
+        /// </summary>
+        void btnSelectArea_Click(object sender, EventArgs e)
+        {
+            var doc = AcadApp.DocumentManager.MdiActiveDocument;
+            if (doc == null)
+            {
+                SetStatus("无打开的图纸。");
+                return;
+            }
+
+            // 把焦点交还给 AutoCAD，让命令提示在绘图区显示
+            AcadApp.MainWindow.Focus();
+            doc.SendStringToExecute("CC_SELECTTEXT\n", true, false, false);
+        }
+
+        /// <summary>供 CC_SELECTTEXT 命令回调：把框选提取到的文字设为校核数据源。</summary>
+        public void ApplySelectedSheet(DrawingSheet sheet)
+        {
+            if (sheet == null) return;
+            try
+            {
+                // 命令在 AutoCAD 线程执行，回到面板需封送 UI 线程
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => ApplySelectedSheet(sheet)));
+                    return;
+                }
+                _modelSheet = sheet;
+                UpdatePreview(sheet);
+                SetStatus($"已提取框选区域文字（{sheet.TextLines.Count} 行），可以开始校核。");
+            }
+            catch (Exception ex)
+            {
+                SetStatus("框选结果应用失败：" + ex.Message);
+            }
+        }
+
+        // ---------- 写入 CAD ----------
+
+        /// <summary>
+        /// 把选中的条文交给 CC_WRITECLAUSE 命令写入图纸。
+        /// 不能直接在模态对话框里取插入点，复用「框选文字」的模式：
+        /// 焦点交还 AutoCAD，通过 SendStringToExecute 让命令提示用户点选插入点。
+        /// </summary>
+        void WriteProvisionToCad(Provision provision)
+        {
+            var doc = AcadApp.DocumentManager.MdiActiveDocument;
+            if (doc == null)
+            {
+                SetStatus("无打开的图纸。");
+                return;
+            }
+            Commands.PendingWriteProvision = provision;
+            AcadApp.MainWindow.Focus();
+            doc.SendStringToExecute("CC_WRITECLAUSE\n", true, false, false);
         }
 
         // ---------- 运行 ----------
@@ -397,6 +471,8 @@ namespace ContentCheck.Acad.UI
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));   // 结论统计条
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));   // 状态
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));   // 进度
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));   // 识别文字标题
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));  // 识别文字预览
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));   // 结果表
 
             _progress.Dock = DockStyle.Fill;
@@ -407,7 +483,9 @@ namespace ContentCheck.Acad.UI
             root.Controls.Add(BuildSummaryBar(), 0, 2);
             root.Controls.Add(BuildStatusRow(), 0, 3);
             root.Controls.Add(_progress, 0, 4);
-            root.Controls.Add(_grid, 0, 5);
+            root.Controls.Add(BuildPreviewRow(), 0, 5);
+            root.Controls.Add(_txtPreview, 0, 6);
+            root.Controls.Add(_grid, 0, 7);
 
             ResultGridSetup.Configure(_grid);
             Controls.Add(root);
@@ -474,18 +552,23 @@ namespace ContentCheck.Acad.UI
             _btnRun.Margin = new Padding(0, 6, 0, 4);
             card.Controls.Add(_btnRun, 0, 1);
 
-            var rowOp2 = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Margin = Padding.Empty, BackColor = UiTheme.Card };
-            rowOp2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            rowOp2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            var rowOp2 = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, Margin = Padding.Empty, BackColor = UiTheme.Card };
+            rowOp2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
+            rowOp2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
+            rowOp2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
             rowOp2.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             _btnExtract = UiTheme.StyleButton(_btnExtract, UiTheme.ButtonKind.Secondary, "提取全部文字");
+            _btnSelectArea = UiTheme.StyleButton(_btnSelectArea, UiTheme.ButtonKind.Primary, "框选文字");
             _btnReport = UiTheme.StyleButton(_btnReport, UiTheme.ButtonKind.Secondary, "另存报告");
             _btnExtract.Dock = DockStyle.Fill;
+            _btnSelectArea.Dock = DockStyle.Fill;
             _btnReport.Dock = DockStyle.Fill;
             _btnExtract.Margin = new Padding(0, 4, 4, 0);
+            _btnSelectArea.Margin = new Padding(2, 4, 2, 0);
             _btnReport.Margin = new Padding(4, 4, 0, 0);
             rowOp2.Controls.Add(_btnExtract, 0, 0);
-            rowOp2.Controls.Add(_btnReport, 1, 0);
+            rowOp2.Controls.Add(_btnSelectArea, 1, 0);
+            rowOp2.Controls.Add(_btnReport, 2, 0);
             card.Controls.Add(rowOp2, 0, 2);
 
             return card;
@@ -543,6 +626,43 @@ namespace ContentCheck.Acad.UI
             return _lblStatus;
         }
 
+        /// <summary>识别文字预览区标题（识别文字 · N 行）。</summary>
+        Control BuildPreviewRow()
+        {
+            _lblPreviewTitle.Dock = DockStyle.Fill;
+            _lblPreviewTitle.Text = "识别文字";
+            _lblPreviewTitle.ForeColor = UiTheme.TextMuted;
+            _lblPreviewTitle.Font = UiTheme.UiFontBold(9f);
+            _lblPreviewTitle.TextAlign = ContentAlignment.MiddleLeft;
+            _lblPreviewTitle.Margin = new Padding(2, 4, 0, 0);
+
+            _txtPreview.Dock = DockStyle.Fill;
+            _txtPreview.ReadOnly = true;
+            _txtPreview.ScrollBars = RichTextBoxScrollBars.Vertical;
+            _txtPreview.WordWrap = false;
+            _txtPreview.DetectUrls = false;
+            _txtPreview.BackColor = UiTheme.Card;
+            _txtPreview.ForeColor = UiTheme.TextMain;
+            _txtPreview.Font = UiTheme.UiFont(9f);
+            _txtPreview.Margin = new Padding(0, 2, 0, 4);
+            _txtPreview.Text = "（暂无识别文字。点击「框选文字」或刷新图纸后在此预览。）";
+            return _lblPreviewTitle;
+        }
+
+        /// <summary>把提取到的文字填入预览区。</summary>
+        void UpdatePreview(DrawingSheet sheet)
+        {
+            if (sheet == null || sheet.TextLines.Count == 0)
+            {
+                _lblPreviewTitle.Text = "识别文字";
+                _txtPreview.Text = "（暂无识别文字。点击「框选文字」或刷新图纸后在此预览。）";
+                return;
+            }
+            _lblPreviewTitle.Text = $"识别文字（{sheet.TextLines.Count} 行）";
+            // 统一用 Windows 原生换行 \r\n，避免某些控件对单独 \n 不换行
+            _txtPreview.Text = sheet.FullText.Replace("\n", "\r\n");
+        }
+
         static Label MidLabel(string text)
         {
             return new Label
@@ -571,6 +691,7 @@ namespace ContentCheck.Acad.UI
             _btnProv.Click += btnProv_Click;
             _btnRun.Click += btnRun_Click;
             _btnExtract.Click += (s, e) => Commands.ExtractAllText();
+            _btnSelectArea.Click += btnSelectArea_Click;
             _btnReport.Click += btnReport_Click;
             _btnSettings.Click += btnSettings_Click;
             _grid.CellDoubleClick += grid_CellDoubleClick;

@@ -3,6 +3,14 @@ bin/
 obj/
 out/
 
+# Database backups
+*.bak
+*.bak2
+
+# Temporary
+*.tmp
+tmpcc_build_check*/
+
 # Visual Studio
 .vs/
 *.user

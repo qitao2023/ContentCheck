@@ -22,6 +22,9 @@ namespace ContentCheck.Acad.UI
 
         public HashSet<long> SelectedIds { get; private set; } = new HashSet<long>();
 
+        /// <summary>用户点击「写入CAD」时选中的条文；未触发时为 null。</summary>
+        public Provision WriteProvision { get; private set; }
+
         public ProvisionPickerDialog(string discipline, List<Provision> provisions, HashSet<long> initial)
         {
             _provisions = provisions;
@@ -40,11 +43,25 @@ namespace ContentCheck.Acad.UI
             ApplyChecks();
         }
 
-        /// <summary>弹出选择框，返回勾选的条文 Id；取消时返回 current。</summary>
-        public static HashSet<long> Pick(IWin32Window owner, string discipline, List<Provision> provisions, HashSet<long> current)
+        /// <summary>弹出选择框的结果：勾选的条文 Id（取消时等于传入的 current）+ 需写入 CAD 的条文。</summary>
+        public sealed class PickResult
+        {
+            public HashSet<long> SelectedIds;
+            public Provision WriteProvision;
+        }
+
+        /// <summary>弹出选择框；取消时 SelectedIds = current。</summary>
+        public static PickResult Pick(IWin32Window owner, string discipline, List<Provision> provisions, HashSet<long> current)
         {
             using (var dlg = new ProvisionPickerDialog(discipline, provisions, current))
-                return dlg.ShowDialog(owner) == DialogResult.OK ? dlg.SelectedIds : current;
+            {
+                var ok = dlg.ShowDialog(owner) == DialogResult.OK;
+                return new PickResult
+                {
+                    SelectedIds = ok ? dlg.SelectedIds : current,
+                    WriteProvision = dlg.WriteProvision,
+                };
+            }
         }
 
         void BuildUi()
@@ -95,15 +112,34 @@ namespace ContentCheck.Acad.UI
                 BackColor = UiTheme.Bg,
             };
 
+            // 详情头部：标题 + 「写入CAD」按钮
             var detailLabel = new Label
             {
-                Dock = DockStyle.Top,
-                Height = 24,
+                Dock = DockStyle.Fill,
                 Text = "条文内容",
                 ForeColor = UiTheme.TextMuted,
                 Font = UiTheme.UiFontBold(9f),
-                Padding = new Padding(0, 0, 0, 4),
+                TextAlign = ContentAlignment.MiddleLeft,
             };
+
+            var btnWriteCad = UiTheme.StyleButton(new Button(), UiTheme.ButtonKind.Primary, "写入CAD");
+            btnWriteCad.Dock = DockStyle.Fill;
+            btnWriteCad.Margin = new Padding(8, 0, 0, 0);
+            new ToolTip().SetToolTip(btnWriteCad, "把左侧选中的条文以多行文字写入图纸（字高 300，行宽 10000）");
+            btnWriteCad.Click += (s, e) => OnWriteCad();
+
+            var detailHeader = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                Height = 30,
+                ColumnCount = 2,
+                Margin = Padding.Empty,
+                BackColor = UiTheme.Bg,
+            };
+            detailHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            detailHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
+            detailHeader.Controls.Add(detailLabel, 0, 0);
+            detailHeader.Controls.Add(btnWriteCad, 1, 0);
 
             _detailBox.Dock = DockStyle.Fill;
             _detailBox.Multiline = true;
@@ -116,7 +152,7 @@ namespace ContentCheck.Acad.UI
             _detailBox.Text = "← 请在左侧选择一条条文";
 
             detailPanel.Controls.Add(_detailBox);
-            detailPanel.Controls.Add(detailLabel);
+            detailPanel.Controls.Add(detailHeader);
 
             // 左右分栏
             var split = new SplitContainer
@@ -212,6 +248,22 @@ namespace ContentCheck.Acad.UI
             {
                 // 点击分组节点，显示组内条文数量
                 _detailBox.Text = $"【{e.Node.Text}】\n\n共 {e.Node.Nodes.Count} 条条文";
+            }
+        }
+
+        /// <summary>「写入CAD」：把左侧当前选中的条文交给命令写入图纸，并关闭对话框。</summary>
+        void OnWriteCad()
+        {
+            var node = _tree.SelectedNode;
+            if (node?.Tag is long id && _provisionMap.TryGetValue(id, out var p))
+            {
+                WriteProvision = p;
+                DialogResult = DialogResult.OK;   // 关闭并把当前勾选返回给面板
+                Close();
+            }
+            else
+            {
+                _detailBox.Text = "请先在左侧选择一条条文，再点击「写入CAD」。";
             }
         }
 
