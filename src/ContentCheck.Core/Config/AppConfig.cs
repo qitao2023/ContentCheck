@@ -39,7 +39,7 @@ namespace ContentCheck.Core.Config
 
         /// <summary>一次 AI 调用校核的最大条文数。</summary>
         [JsonProperty("batch_size")]
-        public int BatchSize { get; set; } = 20;
+        public int BatchSize { get; set; } = 15;
 
         /// <summary>Excel 路径（相对配置文件目录或绝对路径）。</summary>
         [JsonProperty("excel_path")]

@@ -28,7 +28,7 @@
    双击结果行 → 高亮图纸原文；另存报告 → xlsx/txt
 ```
 
-辅助命令：`CC_EXTRACT` 把所有布局文字导出为 txt（排查总说明位置用）。
+辅助命令：`CC_SELECTTEXT` 框选区域提取文字，`CC_WRITECLAUSE` 写入条文。
 
 ## 配置（config.json）
 

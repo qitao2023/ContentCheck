@@ -48,11 +48,12 @@ namespace ContentCheck.Core.Services
 
             var client = new DeepSeekClient(cfg, logDir) { Model = model };
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             int done = 0;
             foreach (var batch in batches)
             {
                 ct.ThrowIfCancellationRequested();
-                status?.Report($"正在校核：{batch.Discipline}《{batch.CodeName}》（{batch.Items.Count} 条）…");
+                status?.Report($"正在校核（{done + 1}/{batches.Count}）：{batch.Discipline}《{batch.CodeName}》（{batch.Items.Count} 条）… 已用 {FormatElapsed(sw.Elapsed)}");
                 var merged = await CheckBatchWithFallback(client, batch, sheetName, effectiveText, ct);
 
                 // 关联条文信息，产出 VerdictResult
@@ -75,12 +76,16 @@ namespace ContentCheck.Core.Services
                 }
 
                 done++;
-                status?.Report($"已完成 {done}/{batches.Count} 批，共 {result.Results.Count} 条");
+                status?.Report($"已完成 {done}/{batches.Count} 批，共 {result.Results.Count} 条，已用 {FormatElapsed(sw.Elapsed)}");
             }
 
-            status?.Report($"校核完成：共 {result.Results.Count} 条");
+            sw.Stop();
+            status?.Report($"校核完成：共 {result.Results.Count} 条，总用时 {FormatElapsed(sw.Elapsed)}");
             return result;
         }
+
+        static string FormatElapsed(TimeSpan t)
+            => t.TotalMinutes >= 1 ? $"{t.Minutes}分{t.Seconds}秒" : $"{t.Seconds}秒";
 
         // ---------- 分批与降级 ----------
 

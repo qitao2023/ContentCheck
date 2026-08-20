@@ -6,6 +6,9 @@ out/
 # Config with API keys
 config.json
 
+# User UI state (provision tree check selections)
+provision_selections.json
+
 # Database backups
 *.bak
 *.bak2

@@ -18,10 +18,10 @@ using ContentCheck.Core.Storage;
 namespace ContentCheck.Acad.UI
 {
     /// <summary>
-    /// 校核停靠面板：专业下拉（单选）+ "…" 按钮选择要校核的条文，模型空间文字，结果表。
+    /// 校核非模态对话框：专业下拉（单选）+ "…" 按钮选择要校核的条文，模型空间文字，结果表。
     /// 线程纪律：AutoCAD 对象只在本控件（UI 线程）访问；校核在 Task.Run 工作线程，只碰 Core 类型。
     /// </summary>
-    public class MainPaletteUserControl : UserControl
+    public class MainModelessDialog : Form
     {
         readonly ComboBox _cbDisc = new ComboBox();
         Button _btnProv = new Button();
@@ -74,7 +74,7 @@ namespace ContentCheck.Acad.UI
             }
         }
 
-        public MainPaletteUserControl()
+        public MainModelessDialog()
         {
             // 保证配置已初始化（NETLOAD 后立即输入 CHECK 时 Idle 可能尚未触发）
             if (!PluginEnv.InitOk)
@@ -85,6 +85,26 @@ namespace ContentCheck.Acad.UI
             BuildUi();
             WireEvents();
             ReloadData();
+            
+            // 设置非模态对话框属性
+            this.Text = "图纸总说明规范校核";
+            this.Size = new Size(520, 800);
+            this.MinimumSize = new Size(480, 600);
+            this.StartPosition = FormStartPosition.CenterScreen;
+            this.ShowInTaskbar = false;
+            this.TopMost = true;
+            this.FormBorderStyle = FormBorderStyle.SizableToolWindow;
+            this.FormClosing += MainModelessDialog_FormClosing;
+        }
+
+        private void MainModelessDialog_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            // 如果是用户点击关闭按钮，隐藏而不是关闭
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                this.Hide();
+            }
         }
 
         public void ReloadData()

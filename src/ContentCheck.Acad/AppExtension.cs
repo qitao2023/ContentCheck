@@ -26,10 +26,10 @@ namespace ContentCheck.Acad
         {
             Application.Idle -= OnFirstIdle;
             AppDomain.CurrentDomain.AssemblyResolve -= OnAssemblyResolve;
-            if (Commands.Palette != null)
+            if (Commands.ModelessDialog != null)
             {
-                try { Commands.Palette.Dispose(); } catch { }
-                Commands.Palette = null;
+                try { Commands.ModelessDialog.Dispose(); } catch { }
+                Commands.ModelessDialog = null;
             }
         }
 

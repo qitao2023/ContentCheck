@@ -11,7 +11,8 @@ namespace ContentCheck.Core.Util
         static readonly object Gate = new object();
 
         public static void WriteCall(string logDir, string model, string sheetName, string batchKey,
-            int itemCount, string systemPrompt, string userPrompt, string rawResponse, string parsedSummary)
+            int itemCount, string systemPrompt, string userPrompt, string rawResponse, string parsedSummary,
+            long elapsedMs = 0)
         {
             if (string.IsNullOrWhiteSpace(logDir)) return;
             try
@@ -24,6 +25,7 @@ namespace ContentCheck.Core.Util
                     sheetName,
                     batchKey,
                     itemCount,
+                    elapsed_ms = elapsedMs,
                     system_prompt = systemPrompt,
                     user_prompt = userPrompt,
                     response_raw = rawResponse,

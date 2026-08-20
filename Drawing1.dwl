@@ -1,3 +1,0 @@
-admin
-DESKTOP-MVAVVM4 
-2026Äê8ÔÂ20ÈÕ  8:55:50

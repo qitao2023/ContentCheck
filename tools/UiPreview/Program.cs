@@ -70,8 +70,9 @@ namespace UiPreview
         static readonly ComboBox _cbDisc = new ComboBox();
         static readonly Button _btnProv = new Button();
         static readonly ComboBox _cbModel = new ComboBox();
+        static readonly Button _btnSettings = new Button();
         static readonly Button _btnRun = new Button();
-        static readonly Button _btnExtract = new Button();
+        static readonly Button _btnSelectArea = new Button();
         static readonly Button _btnReport = new Button();
         static readonly Label _lblStatus = new Label();
         static readonly ProgressBar _progress = new ProgressBar();
@@ -84,17 +85,18 @@ namespace UiPreview
         {
             var form = new Form
             {
-                Width = 480,
-                Height = 760,
+                Width = 520,
+                Height = 800,
                 StartPosition = FormStartPosition.Manual,
                 Location = interactive ? new Point(60, 60) : new Point(-10000, -10000),
-                FormBorderStyle = FormBorderStyle.Sizable,
-                Text = "ContentCheck 校核面板（预览）",
+                FormBorderStyle = FormBorderStyle.SizableToolWindow,
+                Text = "图纸总说明规范校核（预览）",
+                ShowInTaskbar = false,
+                TopMost = true,
             };
 
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, BackColor = UiTheme.Bg };
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 194));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 164));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));
@@ -103,46 +105,16 @@ namespace UiPreview
             _progress.Dock = DockStyle.Fill;
             _grid.Dock = DockStyle.Fill;
 
-            root.Controls.Add(BuildHeader(), 0, 0);
-            root.Controls.Add(BuildSettingsCard(), 0, 1);
-            root.Controls.Add(BuildSummaryBar(), 0, 2);
-            root.Controls.Add(BuildStatusRow(), 0, 3);
-            root.Controls.Add(_progress, 0, 4);
-            root.Controls.Add(_grid, 0, 5);
+            root.Controls.Add(BuildSettingsCard(), 0, 0);
+            root.Controls.Add(BuildSummaryBar(), 0, 1);
+            root.Controls.Add(BuildStatusRow(), 0, 2);
+            root.Controls.Add(_progress, 0, 3);
+            root.Controls.Add(_grid, 0, 4);
 
             ResultGridSetup.Configure(_grid);
             FillGrid();
             form.Controls.Add(root);
             return form;
-        }
-
-        static Control BuildHeader()
-        {
-            var p = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.HeaderBg, Padding = new Padding(18, 8, 18, 8) };
-            var tbl = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, BackColor = UiTheme.HeaderBg };
-            tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
-            tbl.Controls.Add(new Label
-            {
-                Text = "图纸总说明 · 规范校核",
-                ForeColor = Color.White,
-                Font = UiTheme.UiFontBold(11.5f),
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft,
-                AutoEllipsis = true,
-                Margin = Padding.Empty,
-            }, 0, 0);
-            tbl.Controls.Add(new Label
-            {
-                Text = "模型空间 · AI 语义校核",
-                ForeColor = UiTheme.HeaderSub,
-                Font = UiTheme.UiFont(8.5f),
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleRight,
-                Margin = Padding.Empty,
-            }, 1, 0);
-            p.Controls.Add(tbl);
-            return p;
         }
 
         static Control BuildSettingsCard()
@@ -158,8 +130,7 @@ namespace UiPreview
             card.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
             card.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
             card.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-            card.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-            card.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            card.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));  // 操作按钮一行
 
             card.Controls.Add(new Label
             {
@@ -208,26 +179,31 @@ namespace UiPreview
             rowModel.Controls.Add(_cbModel, 1, 0);
             card.Controls.Add(rowModel, 0, 2);
 
-            // 操作
+            // 操作：设置 / 框选文字 / 开始校核 / 另存报告 放在一行
+            var rowOps = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, Margin = Padding.Empty, BackColor = UiTheme.Card };
+            rowOps.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22));
+            rowOps.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26));
+            rowOps.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26));
+            rowOps.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26));
+            rowOps.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            UiTheme.StyleButton(_btnSettings, UiTheme.ButtonKind.Secondary, "设置");
+            UiTheme.StyleButton(_btnSelectArea, UiTheme.ButtonKind.Primary, "框选文字");
             UiTheme.StyleButton(_btnRun, UiTheme.ButtonKind.Primary, "开始校核");
-            _btnRun.Dock = DockStyle.Fill;
-            _btnRun.Font = UiTheme.UiFontBold(10f);
-            _btnRun.Margin = new Padding(0, 6, 0, 4);
-            card.Controls.Add(_btnRun, 0, 3);
-
-            var rowOp2 = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Margin = Padding.Empty, BackColor = UiTheme.Card };
-            rowOp2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            rowOp2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            rowOp2.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            UiTheme.StyleButton(_btnExtract, UiTheme.ButtonKind.Secondary, "提取全部文字");
             UiTheme.StyleButton(_btnReport, UiTheme.ButtonKind.Secondary, "另存报告");
-            _btnExtract.Dock = DockStyle.Fill;
+            _btnSettings.Dock = DockStyle.Fill;
+            _btnSelectArea.Dock = DockStyle.Fill;
+            _btnRun.Dock = DockStyle.Fill;
             _btnReport.Dock = DockStyle.Fill;
-            _btnExtract.Margin = new Padding(0, 4, 4, 0);
-            _btnReport.Margin = new Padding(4, 4, 0, 0);
-            rowOp2.Controls.Add(_btnExtract, 0, 0);
-            rowOp2.Controls.Add(_btnReport, 1, 0);
-            card.Controls.Add(rowOp2, 0, 4);
+            _btnRun.Font = UiTheme.UiFontBold(10f);
+            _btnSettings.Margin = new Padding(0, 6, 4, 0);
+            _btnSelectArea.Margin = new Padding(2, 6, 2, 0);
+            _btnRun.Margin = new Padding(2, 6, 2, 0);
+            _btnReport.Margin = new Padding(4, 6, 0, 0);
+            rowOps.Controls.Add(_btnSettings, 0, 0);
+            rowOps.Controls.Add(_btnSelectArea, 1, 0);
+            rowOps.Controls.Add(_btnRun, 2, 0);
+            rowOps.Controls.Add(_btnReport, 3, 0);
+            card.Controls.Add(rowOps, 0, 3);
 
             return card;
         }
@@ -293,15 +269,51 @@ namespace UiPreview
         {
             var rows = new[]
             {
-                new[] { "符合", "《建筑防火通用规范》(55037-2022)", "3.4.1", "工业与民用建筑周围、工厂厂区内应设置消防车道，消防车道应满足消防车安全通行要求。", "总图,设计说明", "厂区四周设消防车道，净宽净高满足要求。", "总说明明确设置消防车道，满足条文要求。", "" },
-                new[] { "不符合", "《建筑防火通用规范》(55037-2022)", "6.3.4", "防火门、防火窗应具有自动关闭的功能，在关闭后应具有烟密闭性能。", "平面,设计说明", "总说明未提及", "总说明未对防火门自动关闭功能作出规定。", "建议补充防火门自动关闭功能要求。" },
-                new[] { "未涉及", "《建筑防烟排烟系统技术标准》(GB51251-2017)", "8.2.1", "下列部位应采取防烟措施：封闭楼梯间、防烟楼梯间及其前室。", "平面", "总说明未提及", "该条文针对防烟部位设置，属于平面设计内容。", "" },
-                new[] { "无法判断", "国网上海市电力公司电网工程土建设计标准化技术规范（2024 版）", "第九条", "标准220kV户内中心变电站围墙内占地面积不小于116m×70m标准矩形。", "总图,设计说明", "总说明未提及", "总说明未涉及站区占地尺寸，无法判断。", "建议核对总平面图。" },
+                new VerdictResult
+                {
+                    Verdict = "符合",
+                    Evidence = "厂区四周设消防车道，净宽净高满足要求。",
+                    CodeName = "《建筑防火通用规范》(55037-2022)",
+                    ClauseNumber = "3.4.1",
+                    ClauseText = "工业与民用建筑周围、工厂厂区内应设置消防车道，消防车道应满足消防车安全通行要求。",
+                    Analysis = "总说明明确设置消防车道，满足条文要求。",
+                },
+                new VerdictResult
+                {
+                    Verdict = "不符合",
+                    Evidence = "总说明未提及",
+                    CodeName = "《建筑防火通用规范》(55037-2022)",
+                    ClauseNumber = "6.3.4",
+                    ClauseText = "防火门、防火窗应具有自动关闭的功能，在关闭后应具有烟密闭性能。",
+                    Analysis = "总说明未对防火门自动关闭功能作出规定。",
+                    Suggestion = "建议补充防火门自动关闭功能要求。",
+                },
+                new VerdictResult
+                {
+                    Verdict = "未涉及",
+                    Evidence = "总说明未提及",
+                    CodeName = "《建筑防烟排烟系统技术标准》(GB51251-2017)",
+                    ClauseNumber = "8.2.1",
+                    ClauseText = "下列部位应采取防烟措施：封闭楼梯间、防烟楼梯间及其前室。",
+                    Analysis = "该条文针对防烟部位设置，属于平面设计内容。",
+                },
+                new VerdictResult
+                {
+                    Verdict = "无法判断",
+                    Evidence = "总说明未提及",
+                    CodeName = "国网上海市电力公司电网工程土建设计标准化技术规范（2024 版）",
+                    ClauseNumber = "第九条",
+                    ClauseText = "标准220kV户内中心变电站围墙内占地面积不小于116m×70m标准矩形。",
+                    Analysis = "总说明未涉及站区占地尺寸，无法判断。",
+                    Suggestion = "建议核对总平面图。",
+                },
             };
-            foreach (var r in rows)
+            int no = 0;
+            foreach (var v in rows)
             {
-                var idx = _grid.Rows.Add(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]);
-                ResultGridSetup.ColorRow(_grid.Rows[idx], r[0]);
+                no++;
+                var idx = _grid.Rows.Add(no.ToString(), v.Evidence, ResultGridSetup.FormatProvision(v), v.Analysis, v.Suggestion, v.Verdict);
+                ResultGridSetup.ColorRow(_grid.Rows[idx], v.Verdict);
             }
             _lblTotal.Text = "共 4 条";
             _lblOk.Text = "符合 1";
@@ -323,7 +335,7 @@ namespace UiPreview
                 Prov(4, "建筑", "《总图制图标准》(GB/T 50103-2010)", "3.1.1", "总平面图的绘制应符合本标准的规定，图纸上应注明比例、指北针。", "总图,设计说明"),
                 Prov(5, "建筑", "《总图制图标准》(GB/T 50103-2010)", "4.2.3", "竖向设计宜采用等高线法或坡面表示法表达。", "总图"),
             };
-            var dlg = new ProvisionPickerDialog("建筑", provisions, new HashSet<long>());
+            var dlg = new ProvisionPickerDialog("建筑", provisions, null);   // null = 无历史勾选，预览默认全勾
             dlg.StartPosition = FormStartPosition.Manual;
             dlg.Location = new Point(-10000, -10000);
             return dlg;

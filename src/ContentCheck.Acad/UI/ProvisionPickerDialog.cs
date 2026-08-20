@@ -9,7 +9,8 @@ using ContentCheck.Core.Models;
 namespace ContentCheck.Acad.UI
 {
     /// <summary>
-    /// 选择要校核的条文：按规范名称分组（TreeView 带复选框），默认全勾。
+    /// 选择要校核的条文：按规范名称分组（TreeView 带复选框）。
+    /// initial 为 null 表示无历史勾选，默认全勾；非 null（可为空集合）则严格按传入的勾选显示。
     /// 勾选/取消分组节点会级联到组内所有条文。
     /// </summary>
     public class ProvisionPickerDialog : Form
@@ -17,7 +18,7 @@ namespace ContentCheck.Acad.UI
         readonly TreeView _tree = new TreeView();
         readonly TextBox _detailBox = new TextBox();
         readonly List<Provision> _provisions;
-        readonly HashSet<long> _initial;
+        readonly HashSet<long> _initial;   // null = 无历史（默认全勾）
         readonly Dictionary<long, Provision> _provisionMap;
 
         public HashSet<long> SelectedIds { get; private set; } = new HashSet<long>();
@@ -129,8 +130,10 @@ namespace ContentCheck.Acad.UI
             _tree.AfterCheck += OnAfterCheck;
             _tree.AfterSelect += OnAfterSelect;
             
-            treePanel.Controls.Add(treeTitle);
+            // Dock 布局按 Controls 逆序处理：后添加的先布局。
+            // 必须先 Add Fill 的 _tree，再 Add Top 的 treeTitle，否则标题会覆盖树的第一行。
             treePanel.Controls.Add(_tree);
+            treePanel.Controls.Add(treeTitle);
 
             // 右侧详情面板
             var detailPanel = new Panel
@@ -161,8 +164,9 @@ namespace ContentCheck.Acad.UI
             _detailBox.WordWrap = true;
             _detailBox.Text = "← 请在左侧选择一条条文";
 
-            detailPanel.Controls.Add(detailLabel);
+            // 同样：先 Add Fill 的 _detailBox，再 Add Top 的 detailLabel，避免标题覆盖文本框第一行。
             detailPanel.Controls.Add(_detailBox);
+            detailPanel.Controls.Add(detailLabel);
 
             // 左右分栏
             var split = new SplitContainer
@@ -223,7 +227,8 @@ namespace ContentCheck.Acad.UI
             {
                 foreach (TreeNode leaf in group.Nodes)
                 {
-                    bool on = _initial.Count == 0 || _initial.Contains((long)leaf.Tag);
+                    // null = 从未勾选过，默认全勾；否则严格按历史勾选显示（空集合 = 全不选）
+                    bool on = _initial == null || _initial.Contains((long)leaf.Tag);
                     leaf.Checked = on;
                 }
                 SyncGroup(group);

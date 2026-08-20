@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using ContentCheck.Acad.UI;
 using ContentCheck.Core.Models;
 using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
@@ -22,7 +23,7 @@ namespace ContentCheck.Acad.Report
                 for (int i = 0; i < results.Count; i++)
                     WriteRow(sheet, i + 1, results[i]);
 
-                for (int c = 0; c < 8; c++) sheet.AutoSizeColumn(c);
+                for (int c = 0; c < 6; c++) sheet.AutoSizeColumn(c);
 
                 // 统计
                 var stat = wb.CreateSheet("统计");
@@ -72,9 +73,13 @@ namespace ContentCheck.Acad.Report
         {
             var sb = new StringBuilder();
             sb.AppendLine($"图纸/布局：{sheetName}\t导出时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            sb.AppendLine("结论\t规范名称\t条文编号\t条文内容\t图纸类型\t依据原文\tAI分析\t修改建议");
-            foreach (var x in results)
-                sb.AppendLine($"{x.Verdict}\t{x.CodeName}\t{x.ClauseNumber}\t{x.ClauseText}\t{x.DrawingTypesRaw}\t{x.Evidence}\t{x.Analysis}\t{x.Suggestion}");
+            sb.AppendLine("序号\t识别原文\t规范条文\tAI分析\t修改建议\t结论");
+            for (int i = 0; i < results.Count; i++)
+            {
+                var x = results[i];
+                var provision = ResultGridSetup.FormatProvision(x).Replace("\r\n", " ").Replace("\n", " ");
+                sb.AppendLine($"{i + 1}\t{x.Evidence}\t{provision}\t{x.Analysis}\t{x.Suggestion}\t{x.Verdict}");
+            }
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
@@ -86,7 +91,7 @@ namespace ContentCheck.Acad.Report
             style.FillPattern = FillPattern.SolidForeground;
             style.Alignment = HorizontalAlignment.Center;
 
-            string[] cols = { "结论", "规范名称", "条文编号", "条文内容", "图纸类型", "依据原文", "AI分析", "修改建议" };
+            string[] cols = { "序号", "识别原文", "规范条文", "AI分析", "修改建议", "结论" };
             for (int i = 0; i < cols.Length; i++)
             {
                 var cell = row.CreateCell(i);
@@ -98,14 +103,12 @@ namespace ContentCheck.Acad.Report
         static void WriteRow(ISheet sheet, int r, VerdictResult x)
         {
             var row = sheet.CreateRow(r);
-            row.CreateCell(0).SetCellValue(x.Verdict ?? "");
-            row.CreateCell(1).SetCellValue(x.CodeName ?? "");
-            row.CreateCell(2).SetCellValue(x.ClauseNumber ?? "");
-            row.CreateCell(3).SetCellValue(x.ClauseText ?? "");
-            row.CreateCell(4).SetCellValue(x.DrawingTypesRaw ?? "");
-            row.CreateCell(5).SetCellValue(x.Evidence ?? "");
-            row.CreateCell(6).SetCellValue(x.Analysis ?? "");
-            row.CreateCell(7).SetCellValue(x.Suggestion ?? "");
+            row.CreateCell(0).SetCellValue(r.ToString());
+            row.CreateCell(1).SetCellValue(x.Evidence ?? "");
+            row.CreateCell(2).SetCellValue(ResultGridSetup.FormatProvision(x));
+            row.CreateCell(3).SetCellValue(x.Analysis ?? "");
+            row.CreateCell(4).SetCellValue(x.Suggestion ?? "");
+            row.CreateCell(5).SetCellValue(x.Verdict ?? "");
         }
     }
 }

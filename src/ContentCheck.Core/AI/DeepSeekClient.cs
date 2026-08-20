@@ -53,7 +53,7 @@ namespace ContentCheck.Core.AI
 
         static HttpClient CreateHttp()
         {
-            var h = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+            var h = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
             h.DefaultRequestHeaders.Add("User-Agent", "ContentCheck/1.0");
             return h;
         }
@@ -62,15 +62,17 @@ namespace ContentCheck.Core.AI
         public async Task<List<AiVerdict>> CheckBatchAsync(CheckBatch batch, string sheetName, string sheetText,
             CancellationToken ct)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var system = PromptBuilder.SystemPrompt();
             var user = PromptBuilder.UserPrompt(sheetName, sheetText, batch);
-            var raw = await ChatJsonAsync(system, user, ct);
+            var raw = await ChatJsonAsync(system, user, ct, MaxTokensFor(batch.Items.Count));
+            sw.Stop();
 
             var verdicts = AiJsonParser.ParseVerdicts(raw);
             if (verdicts.Count == 0)
             {
                 JsonLog.WriteCall(_logDir, Model, sheetName, $"{batch.Discipline}|{batch.CodeName}",
-                    batch.Items.Count, system, user, raw, "解析失败:空结果");
+                    batch.Items.Count, system, user, raw, "解析失败:空结果", sw.ElapsedMilliseconds);
                 throw new AiCallException("AI 返回为空或无法解析为 JSON");
             }
 
@@ -92,7 +94,7 @@ namespace ContentCheck.Core.AI
             }
 
             JsonLog.WriteCall(_logDir, Model, sheetName, $"{batch.Discipline}|{batch.CodeName}",
-                batch.Items.Count, system, user, raw, $"成功:{verdicts.Count}条");
+                batch.Items.Count, system, user, raw, $"成功:{verdicts.Count}条", sw.ElapsedMilliseconds);
             return verdicts;
         }
 
@@ -106,14 +108,16 @@ namespace ContentCheck.Core.AI
                 CodeName = "",
                 Items = { item },
             };
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var system = PromptBuilder.SystemPrompt();
             var user = PromptBuilder.UserPrompt(sheetName, sheetText, batch);
-            var raw = await ChatJsonAsync(system, user, ct);
+            var raw = await ChatJsonAsync(system, user, ct, MaxTokensFor(1));
+            sw.Stop();
 
             var verdicts = AiJsonParser.ParseVerdicts(raw);
             var verdict = verdicts.FirstOrDefault();
             JsonLog.WriteCall(_logDir, Model, sheetName, $"逐条:{item.ClauseNumber}",
-                1, system, user, raw, verdict == null ? "解析失败" : $"成功:{verdict.Verdict}");
+                1, system, user, raw, verdict == null ? "解析失败" : $"成功:{verdict.Verdict}", sw.ElapsedMilliseconds);
             return verdict
                 ?? new AiVerdict
                 {
@@ -123,18 +127,25 @@ namespace ContentCheck.Core.AI
                 };
         }
 
-        /// <summary>调用 chat/completions，返回 message 内容（JSON 文本）。失败重试 2 次后抛 AiCallException。</summary>
-        async Task<string> ChatJsonAsync(string system, string user, CancellationToken ct)
+        /// <summary>按条文数动态计算 max_tokens：防止模型"跑飞"时一直生成到配置上限（如 8192），单条条文却要等几分钟。
+        /// 提示词已约束每条结果精简（≤300 token），按 300/条 + 600 余量，再封顶到配置上限。</summary>
+        int MaxTokensFor(int itemCount)
         {
-            int[] backoffs = { 3000, 9000 };
+            int needed = 600 + Math.Max(1, itemCount) * 300;
+            return Math.Min(_cfg.MaxTokens, needed);
+        }
+
+        /// <summary>调用 chat/completions，返回 message 内容（JSON 文本）。失败重试 1 次后抛 AiCallException。</summary>
+        async Task<string> ChatJsonAsync(string system, string user, CancellationToken ct, int maxTokens)
+        {
             Exception lastErr = null;
 
-            for (int attempt = 0; attempt <= backoffs.Length; attempt++)
+            for (int attempt = 0; attempt <= 1; attempt++)
             {
                 ct.ThrowIfCancellationRequested();
                 try
                 {
-                    var raw = await PostOnceAsync(system, user, ct);
+                    var raw = await PostOnceAsync(system, user, maxTokens, ct);
                     // 空内容也视作失败重试
                     if (string.IsNullOrWhiteSpace(raw))
                         throw new AiCallException("AI 返回内容为空");
@@ -143,9 +154,9 @@ namespace ContentCheck.Core.AI
                 catch (Exception ex)
                 {
                     lastErr = ex;
-                    if (attempt < backoffs.Length)
+                    if (attempt == 0)
                     {
-                        await Task.Delay(backoffs[attempt], ct);
+                        await Task.Delay(1500, ct); // 只重试一次，等1.5秒
                     }
                 }
             }
@@ -202,13 +213,13 @@ namespace ContentCheck.Core.AI
             }
         }
 
-        async Task<string> PostOnceAsync(string system, string user, CancellationToken ct)
+        async Task<string> PostOnceAsync(string system, string user, int maxTokens, CancellationToken ct)
         {
             var payload = new JObject
             {
                 ["model"] = Model,
                 ["temperature"] = _cfg.Temperature,
-                ["max_tokens"] = _cfg.MaxTokens,
+                ["max_tokens"] = maxTokens,
                 ["response_format"] = new JObject { ["type"] = "json_object" },
                 ["messages"] = new JArray(
                     new JObject { ["role"] = "system", ["content"] = system },

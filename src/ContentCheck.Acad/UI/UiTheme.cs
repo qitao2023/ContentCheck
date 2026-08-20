@@ -16,6 +16,10 @@ namespace ContentCheck.Acad.UI
         public static readonly Color AccentDark = Color.FromArgb(0x1E, 0x50, 0xB8);
         public static readonly Color AccentSoft = Color.FromArgb(0xE8, 0xEF, 0xFB);
 
+        // 按钮 / 下拉框中性色（无彩色）
+        public static readonly Color BtnPrimaryBg = Color.FromArgb(0xF0, 0xF2, 0xF6);  // 主按钮浅灰底
+        public static readonly Color BtnHoverBg = Color.FromArgb(0xE2, 0xE7, 0xEE);    // 悬停中灰底
+
         // 顶栏
         public static readonly Color HeaderBg = Color.FromArgb(0x1F, 0x38, 0x64);
         public static readonly Color HeaderSub = Color.FromArgb(0xB6, 0xC6, 0xDE);
@@ -81,24 +85,16 @@ namespace ContentCheck.Acad.UI
         {
             b.Text = text;
             b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderSize = kind == ButtonKind.Primary ? 0 : 1;
+            b.FlatAppearance.BorderSize = 1;
             b.FlatAppearance.BorderColor = Border;
             b.Cursor = Cursors.Hand;
             b.Font = UiFont();
             b.UseVisualStyleBackColor = false;
-            if (kind == ButtonKind.Primary)
-            {
-                b.BackColor = Accent;
-                b.ForeColor = Color.White;
-                b.FlatAppearance.BorderSize = 0;
-            }
-            else
-            {
-                b.BackColor = Card;
-                b.ForeColor = TextMain;
-            }
-            b.MouseEnter += (s, e) => { if (b.Enabled) b.BackColor = kind == ButtonKind.Primary ? AccentDark : AccentSoft; };
-            b.MouseLeave += (s, e) => { if (b.Enabled) b.BackColor = kind == ButtonKind.Primary ? Accent : Card; };
+            b.ForeColor = TextMain;
+            // 全部中性灰白：主按钮浅灰底 + 细边框，次按钮白底 + 细边框，悬停统一中灰
+            b.BackColor = kind == ButtonKind.Primary ? BtnPrimaryBg : Card;
+            b.MouseEnter += (s, e) => { if (b.Enabled) b.BackColor = BtnHoverBg; };
+            b.MouseLeave += (s, e) => { if (b.Enabled) b.BackColor = kind == ButtonKind.Primary ? BtnPrimaryBg : Card; };
             return b;
         }
 
@@ -108,6 +104,7 @@ namespace ContentCheck.Acad.UI
             cb.FlatStyle = FlatStyle.Flat;
             cb.Font = UiFont();
             cb.BackColor = Color.White;
+            cb.ForeColor = TextMain;
             return cb;
         }
 
