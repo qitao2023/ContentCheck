@@ -30,6 +30,18 @@ namespace ContentCheck.Acad.UI
         public static readonly Color VerdictNa = Color.FromArgb(0x80, 0x86, 0x8B);
         public static readonly Color VerdictUnknown = Color.FromArgb(0xE8, 0x74, 0x0A);
 
+        // 段落背景色（交替使用，便于区分相邻段落）
+        public static readonly Color[] SegmentBgs = new[]
+        {
+            Color.FromArgb(0xFF, 0xF8, 0xE1), // 浅黄
+            Color.FromArgb(0xE8, 0xF5, 0xE9), // 浅绿
+            Color.FromArgb(0xE3, 0xF2, 0xFD), // 浅蓝
+            Color.FromArgb(0xF3, 0xE5, 0xF5), // 浅紫
+            Color.FromArgb(0xFF, 0xEB, 0xEE), // 浅红
+            Color.FromArgb(0xE0, 0xF7, 0xFA), // 浅青
+        };
+        public static Color SegmentBg(int index) => SegmentBgs[index % SegmentBgs.Length];
+
         public static readonly Color RowAlt = Color.FromArgb(0xF8, 0xFA, 0xFD);
         public static readonly Color GridHeaderBg = Color.FromArgb(0x34, 0x43, 0x58);
         public static readonly Color GridHeaderText = Color.White;

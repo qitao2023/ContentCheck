@@ -66,43 +66,71 @@ namespace ContentCheck.Acad.UI
 
         void BuildUi()
         {
-            // 底部按钮
+            // 底部按钮：左端是树操作（全选/全不选），右端是「写入CAD」+ 确定/取消
             var btnOk = UiTheme.StyleButton(new Button(), UiTheme.ButtonKind.Primary, "确定");
             var btnCancel = UiTheme.StyleButton(new Button(), UiTheme.ButtonKind.Secondary, "取消");
             btnOk.DialogResult = DialogResult.OK;
             btnCancel.DialogResult = DialogResult.Cancel;
             var btnAll = UiTheme.StyleButton(new Button(), UiTheme.ButtonKind.Secondary, "全选");
             var btnNone = UiTheme.StyleButton(new Button(), UiTheme.ButtonKind.Secondary, "全不选");
-            btnOk.Dock = btnCancel.Dock = btnAll.Dock = btnNone.Dock = DockStyle.Fill;
+            var btnWriteCad = UiTheme.StyleButton(new Button(), UiTheme.ButtonKind.Primary, "写入CAD");
+            btnOk.Dock = btnCancel.Dock = btnAll.Dock = btnNone.Dock = btnWriteCad.Dock = DockStyle.Fill;
 
-            var btnRow = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 60, ColumnCount = 5, Padding = new Padding(8, 8, 8, 8) };
-            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
-            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
-            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
-            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+            var btnRow = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 60, ColumnCount = 6, Padding = new Padding(8, 8, 8, 8) };
+            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));    // 全选
+            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));    // 全不选
+            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));    // 弹性空隙
+            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));   // 写入CAD（比一般按钮宽）
+            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));    // 确定
+            btnRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));    // 取消
             btnAll.Margin = new Padding(0, 4, 8, 4);
             btnNone.Margin = new Padding(0, 4, 8, 4);
+            btnWriteCad.Margin = new Padding(0, 4, 8, 4);
             btnOk.Margin = new Padding(0, 4, 8, 4);
             btnCancel.Margin = new Padding(0, 4, 0, 4);
-            btnRow.Controls.Add(new Label(), 0, 0);
-            btnRow.Controls.Add(btnAll, 1, 0);
-            btnRow.Controls.Add(btnNone, 2, 0);
-            btnRow.Controls.Add(btnOk, 3, 0);
-            btnRow.Controls.Add(btnCancel, 4, 0);
+            btnRow.Controls.Add(btnAll, 0, 0);
+            btnRow.Controls.Add(btnNone, 1, 0);
+            btnRow.Controls.Add(new Label(), 2, 0);
+            btnRow.Controls.Add(btnWriteCad, 3, 0);
+            btnRow.Controls.Add(btnOk, 4, 0);
+            btnRow.Controls.Add(btnCancel, 5, 0);
 
-            // 树
+            new ToolTip().SetToolTip(btnWriteCad, "把左侧选中的条文以多行文字写入图纸（字高 300，行宽 5000）");
+            btnWriteCad.Click += (s, e) => OnWriteCad();
+
+            // 树 - 使用 Panel 包装来控制位置
+            var treePanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.White,
+                BorderStyle = BorderStyle.FixedSingle,
+            };
+            
+            // 目录标题
+            var treeTitle = new Label
+            {
+                Dock = DockStyle.Top,
+                Height = 30,
+                Text = "目录",
+                ForeColor = UiTheme.TextMuted,
+                Font = UiTheme.UiFontBold(9f),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(8, 0, 0, 0),
+            };
+            
             _tree.Dock = DockStyle.Fill;
             _tree.CheckBoxes = true;
             _tree.HideSelection = false;
             _tree.Font = UiTheme.UiFont();
             _tree.BackColor = Color.White;
-            _tree.BorderStyle = BorderStyle.FixedSingle;
+            _tree.BorderStyle = BorderStyle.None;
             _tree.FullRowSelect = true;
             _tree.ShowLines = true;
-            _tree.Padding = new Padding(0, 48, 0, 0);  // 往下移动约两行文字
             _tree.AfterCheck += OnAfterCheck;
             _tree.AfterSelect += OnAfterSelect;
+            
+            treePanel.Controls.Add(treeTitle);
+            treePanel.Controls.Add(_tree);
 
             // 右侧详情面板
             var detailPanel = new Panel
@@ -112,34 +140,16 @@ namespace ContentCheck.Acad.UI
                 BackColor = UiTheme.Bg,
             };
 
-            // 详情头部：标题 + 「写入CAD」按钮
+            // 详情头部：标题（「写入CAD」按钮已移到底部按钮行）
             var detailLabel = new Label
             {
-                Dock = DockStyle.Fill,
+                Dock = DockStyle.Top,
+                Height = 30,
                 Text = "条文内容",
                 ForeColor = UiTheme.TextMuted,
                 Font = UiTheme.UiFontBold(9f),
                 TextAlign = ContentAlignment.MiddleLeft,
             };
-
-            var btnWriteCad = UiTheme.StyleButton(new Button(), UiTheme.ButtonKind.Primary, "写入CAD");
-            btnWriteCad.Dock = DockStyle.Fill;
-            btnWriteCad.Margin = new Padding(8, 0, 0, 0);
-            new ToolTip().SetToolTip(btnWriteCad, "把左侧选中的条文以多行文字写入图纸（字高 300，行宽 10000）");
-            btnWriteCad.Click += (s, e) => OnWriteCad();
-
-            var detailHeader = new TableLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                Height = 30,
-                ColumnCount = 2,
-                Margin = Padding.Empty,
-                BackColor = UiTheme.Bg,
-            };
-            detailHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            detailHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
-            detailHeader.Controls.Add(detailLabel, 0, 0);
-            detailHeader.Controls.Add(btnWriteCad, 1, 0);
 
             _detailBox.Dock = DockStyle.Fill;
             _detailBox.Multiline = true;
@@ -151,8 +161,8 @@ namespace ContentCheck.Acad.UI
             _detailBox.WordWrap = true;
             _detailBox.Text = "← 请在左侧选择一条条文";
 
+            detailPanel.Controls.Add(detailLabel);
             detailPanel.Controls.Add(_detailBox);
-            detailPanel.Controls.Add(detailHeader);
 
             // 左右分栏
             var split = new SplitContainer
@@ -162,7 +172,7 @@ namespace ContentCheck.Acad.UI
                 BorderStyle = BorderStyle.FixedSingle,
                 BackColor = UiTheme.Splitter,
             };
-            split.Panel1.Controls.Add(_tree);
+            split.Panel1.Controls.Add(treePanel);
             split.Panel2.Controls.Add(detailPanel);
 
             // 左右等宽：初始及窗口缩放都保持 50/50

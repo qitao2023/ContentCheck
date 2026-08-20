@@ -309,7 +309,9 @@ namespace ContentCheck.Acad.UI
             var progress = new UiProgress(this, s => _lblStatus.Text = s);
 
             var sheetName = _modelSheet.Name;
-            var sheetText = _modelSheet.FullText;
+            var sheetText = string.IsNullOrWhiteSpace(_modelSheet.SegmentedText)
+                ? _modelSheet.FullText
+                : _modelSheet.SegmentedText;
             CheckEngine.RunResult result = null;
             string error = null;
             try
@@ -415,12 +417,32 @@ namespace ContentCheck.Acad.UI
                 .ToList();
             if (frags.Count == 0) return handles;
 
-            foreach (var line in sheet.TextLines)
+            // 优先在聚合段落里找（段落文本更完整，命中率更高）；找不到再回退逐行
+            if (sheet.Segments != null && sheet.Segments.Count > 0)
             {
-                if (string.IsNullOrWhiteSpace(line.Text) || string.IsNullOrWhiteSpace(line.Handle)) continue;
-                if (frags.Any(f => line.Text.Contains(f)))
-                    if (!handles.Contains(line.Handle))
-                        handles.Add(line.Handle);
+                foreach (var seg in sheet.Segments)
+                {
+                    if (string.IsNullOrWhiteSpace(seg.Text)) continue;
+                    if (!frags.Any(f => seg.Text.Contains(f))) continue;
+
+                    foreach (var line in seg.Lines)
+                    {
+                        if (string.IsNullOrWhiteSpace(line.Handle)) continue;
+                        if (!handles.Contains(line.Handle))
+                            handles.Add(line.Handle);
+                    }
+                }
+            }
+
+            if (handles.Count == 0)
+            {
+                foreach (var line in sheet.TextLines)
+                {
+                    if (string.IsNullOrWhiteSpace(line.Text) || string.IsNullOrWhiteSpace(line.Handle)) continue;
+                    if (frags.Any(f => line.Text.Contains(f)))
+                        if (!handles.Contains(line.Handle))
+                            handles.Add(line.Handle);
+                }
             }
             return handles;
         }
@@ -658,9 +680,36 @@ namespace ContentCheck.Acad.UI
                 _txtPreview.Text = "（暂无识别文字。点击「框选文字」或刷新图纸后在此预览。）";
                 return;
             }
-            _lblPreviewTitle.Text = $"识别文字（{sheet.TextLines.Count} 行）";
-            // 统一用 Windows 原生换行 \r\n，避免某些控件对单独 \n 不换行
-            _txtPreview.Text = sheet.FullText.Replace("\n", "\r\n");
+            int segCount = sheet.Segments != null ? sheet.Segments.Count : 0;
+            _lblPreviewTitle.Text = segCount > 0
+                ? $"识别文字（{sheet.TextLines.Count} 行，{segCount} 段）"
+                : $"识别文字（{sheet.TextLines.Count} 行）";
+            // 有分段时用彩色背景高亮每个段落；否则回退到纯文本
+            if (sheet.Segments != null && sheet.Segments.Count > 0)
+            {
+                _txtPreview.Clear();
+                for (int i = 0; i < sheet.Segments.Count; i++)
+                {
+                    var seg = sheet.Segments[i];
+                    var bg = UiTheme.SegmentBg(i);
+                    string body = (seg.Text ?? "").Replace("\n", "\r\n");
+
+                    _txtPreview.SelectionBackColor = bg;
+                    _txtPreview.SelectionFont = UiTheme.UiFont(9f);
+                    _txtPreview.AppendText(body);
+
+                    // 段落之间仅加一个换行做分隔（不是空行）
+                    if (i < sheet.Segments.Count - 1)
+                    {
+                        _txtPreview.SelectionBackColor = UiTheme.Card;
+                        _txtPreview.AppendText("\n");
+                    }
+                }
+            }
+            else
+            {
+                _txtPreview.Text = (sheet.FullText ?? "").Replace("\n", "\r\n");
+            }
         }
 
         static Label MidLabel(string text)

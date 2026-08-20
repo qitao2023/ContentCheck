@@ -156,7 +156,7 @@ namespace ContentCheck.Acad
 
         /// <summary>
         /// 把选中的规范条文以多行文字（MText）写入模型空间：
-        /// 字高 300、行宽 10000（约每行 50 字自动换行）。插入点由用户在图纸中点选。
+        /// 字高 300、行宽 5000，内容按每行约 25 字硬断行。插入点由用户在图纸中点选。
         /// </summary>
         [CommandMethod("CC_WRITECLAUSE")]
         public static void WriteClauseToCad()
@@ -190,7 +190,7 @@ namespace ContentCheck.Acad
                         mtext.SetDatabaseDefaults();
                         mtext.Location = pr.Value;
                         mtext.Height = 300;
-                        mtext.Width = 10000;
+                        mtext.Width = 5000;
                         mtext.Contents = BuildMTextContent(prov);
                         ms.AppendEntity(mtext);
                         tr.AddNewlyCreatedDBObject(mtext, true);
@@ -207,23 +207,40 @@ namespace ContentCheck.Acad
         }
 
         /// <summary>
-        /// 组装 MText 内容：标题行（规范名称 + 条文编号）+ 条文全文。
-        /// 换行转 MText 段落符 \P；反斜杠、花括号先转义避免被当成格式码。
+        /// 组装 MText 内容：仅条文全文（不含规范名称与编号）。
+        /// 按每行约 25 字硬断行（行宽减半后的效果），段落符 \P 断行；
+        /// 反斜杠、花括号先转义避免被当成格式码。
         /// </summary>
         static string BuildMTextContent(Provision p)
         {
-            var head = "【" + (p.CodeName ?? "") + "】";
-            if (!string.IsNullOrWhiteSpace(p.ClauseNumber))
-                head += " " + p.ClauseNumber;
-
-            var text = head + "\n" + (p.ClauseText ?? "(无内容)");
-            return text
+            var paragraphs = (p.ClauseText ?? "(无内容)")
                 .Replace("\r\n", "\n")
                 .Replace("\r", "\n")
-                .Replace("\\", "\\\\")   // 先转义原文中的反斜杠
-                .Replace("{", "\\{")
-                .Replace("}", "\\}")
-                .Replace("\n", "\\P");   // 最后统一换行 → 段落符
+                .Split('\n');
+
+            var sb = new StringBuilder();
+            foreach (var para in paragraphs)
+            {
+                var text = para.Trim();
+                if (text.Length == 0) continue;
+                AppendWrapped(sb, text, 25);
+            }
+            // 去掉末尾多余的段落符 \P
+            if (sb.Length >= 2 && sb.ToString().EndsWith("\\P"))
+                sb.Length -= 2;
+            return sb.ToString();
+        }
+
+        /// <summary>把一段文字按每行最多 maxLen 个字符硬断行，行尾加 MText 段落符 \P。逐行转义，避免转义序列被 \P 拆开。</summary>
+        static void AppendWrapped(StringBuilder sb, string text, int maxLen)
+        {
+            for (int i = 0; i < text.Length; i += maxLen)
+            {
+                int len = Math.Min(maxLen, text.Length - i);
+                var chunk = text.Substring(i, len);
+                sb.Append(chunk.Replace("\\", "\\\\").Replace("{", "\\{").Replace("}", "\\}"));
+                sb.Append("\\P");
+            }
         }
     }
 }

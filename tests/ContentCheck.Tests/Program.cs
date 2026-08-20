@@ -385,6 +385,63 @@ namespace ContentCheck.Tests
                 }
                 finally { try { if (File.Exists(file)) File.Delete(file); } catch { } }
             });
+
+            Test("API key 环境变量回退：config 为空时取 DEEPSEEK_API_KEY", () =>
+            {
+                var file = Path.Combine(Path.GetTempPath(), $"cc_cfg_env1_{Guid.NewGuid():N}.json");
+                var oldEnv = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY");
+                try
+                {
+                    File.WriteAllText(file, "{\"api_key\":\"\"}", new UTF8Encoding(false));
+                    Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "sk-from-env");
+                    var cfg = ConfigLoader.Load(file);
+                    Assert(cfg.ApiKey == "sk-from-env", "回退到环境变量");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", oldEnv);
+                    try { if (File.Exists(file)) File.Delete(file); } catch { }
+                }
+            });
+
+            Test("API key 环境变量回退：config 有值时优先用 config", () =>
+            {
+                var file = Path.Combine(Path.GetTempPath(), $"cc_cfg_env2_{Guid.NewGuid():N}.json");
+                var oldEnv = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY");
+                try
+                {
+                    File.WriteAllText(file, "{\"api_key\":\"sk-from-file\"}", new UTF8Encoding(false));
+                    Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "sk-from-env");
+                    var cfg = ConfigLoader.Load(file);
+                    Assert(cfg.ApiKey == "sk-from-file", "文件值优先于环境变量");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", oldEnv);
+                    try { if (File.Exists(file)) File.Delete(file); } catch { }
+                }
+            });
+
+            Test("API key 环境变量回退：两者都为空则返回空", () =>
+            {
+                var file = Path.Combine(Path.GetTempPath(), $"cc_cfg_env3_{Guid.NewGuid():N}.json");
+                var oldEnv1 = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY");
+                var oldEnv2 = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN");
+                try
+                {
+                    File.WriteAllText(file, "{\"api_key\":\"\"}", new UTF8Encoding(false));
+                    Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", null);
+                    Environment.SetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN", null);
+                    var cfg = ConfigLoader.Load(file);
+                    Assert(cfg.ApiKey == "", "都为空则返回空");
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", oldEnv1);
+                    Environment.SetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN", oldEnv2);
+                    try { if (File.Exists(file)) File.Delete(file); } catch { }
+                }
+            });
         }
 
         static string FindRoot()

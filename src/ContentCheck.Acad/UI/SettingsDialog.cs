@@ -156,6 +156,7 @@ namespace ContentCheck.Acad.UI
             UiTheme.StyleButton(_btnSave, UiTheme.ButtonKind.Primary, "保存");
             _btnSave.Dock = DockStyle.Fill;
             _btnSave.Margin = new Padding(4, 4, 4, 4);
+            _btnSave.Click += btnSave_Click;
             UiTheme.StyleButton(_btnCancel, UiTheme.ButtonKind.Secondary, "取消");
             _btnCancel.Dock = DockStyle.Fill;
             _btnCancel.Margin = new Padding(4, 4, 0, 4);
@@ -452,12 +453,18 @@ namespace ContentCheck.Acad.UI
 
             try
             {
+                // 读取现有配置，保留 temperature 等字段
+                var existing = ConfigLoader.Load(_configPath);
                 var settings = new AiSettings
                 {
                     Provider = SelectedProviderKey(),
                     ApiKey = _txtApiKey.Text.Trim(),
                     BaseUrl = baseUrl,
                     Model = model,
+                    Temperature = existing.Temperature,
+                    MaxTokens = existing.MaxTokens,
+                    MaxSheetChars = existing.MaxSheetChars,
+                    BatchSize = existing.BatchSize,
                 };
                 _saved = ConfigWriter.SaveAiSettings(_configPath, settings);
                 DialogResult = DialogResult.OK;

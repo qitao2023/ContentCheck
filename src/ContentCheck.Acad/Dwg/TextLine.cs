@@ -24,11 +24,24 @@ namespace ContentCheck.Acad.Dwg
         }
     }
 
+    /// <summary>聚合后的文本段（若干相邻 TextLine 组成，用于校核/定位）。</summary>
+    public class TextSegment
+    {
+        public int Index { get; set; }
+        public string Title { get; set; }
+        public string Text { get; set; }
+        public List<TextLine> Lines { get; } = new List<TextLine>();
+    }
+
     /// <summary>图纸中的一个布局（或 Model），含其全部文本。</summary>
     public class DrawingSheet
     {
         public string Name { get; set; }
         public List<TextLine> TextLines { get; } = new List<TextLine>();
         public string FullText { get; set; }
+
+        /// <summary>按规则聚合后的文本段（空行/序号/标题/缩进切分）。</summary>
+        public List<TextSegment> Segments { get; } = new List<TextSegment>();
+        public string SegmentedText { get; set; }
     }
 }

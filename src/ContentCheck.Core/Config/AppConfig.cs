@@ -12,7 +12,7 @@ namespace ContentCheck.Core.Config
         [JsonProperty("provider")]
         public string Provider { get; set; } = "deepseek";
 
-        /// <summary>API key；为空时回退到环境变量。</summary>
+        /// <summary>API key；为空时回退到环境变量 DEEPSEEK_API_KEY / ANTHROPIC_AUTH_TOKEN。</summary>
         [JsonProperty("api_key")]
         public string ApiKey { get; set; }
 

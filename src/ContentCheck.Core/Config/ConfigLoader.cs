@@ -6,7 +6,7 @@ namespace ContentCheck.Core.Config
 {
     /// <summary>
     /// 加载 config.json，并把相对路径解析为绝对路径（相对配置文件所在目录）。
-    /// API key 直接取自 config.json.api_key，不做环境变量解析。
+    /// API key 优先取 config.json.api_key，为空时回退到环境变量 DEEPSEEK_API_KEY / ANTHROPIC_AUTH_TOKEN。
     /// </summary>
     public static class ConfigLoader
     {
@@ -56,10 +56,23 @@ namespace ContentCheck.Core.Config
             return cfg;
         }
 
-        /// <summary>规范化 API key：直接取 config.json 里的值，仅去空白，不做环境变量解析。</summary>
+        /// <summary>
+        /// 规范化 API key：config.json 值优先；为空时依次回退环境变量
+        /// DEEPSEEK_API_KEY → ANTHROPIC_AUTH_TOKEN。
+        /// </summary>
         public static string ResolveApiKey(string apiKey)
         {
-            return string.IsNullOrWhiteSpace(apiKey) ? "" : apiKey.Trim();
+            if (!string.IsNullOrWhiteSpace(apiKey)) return apiKey.Trim();
+
+            // 回退 1：DEEPSEEK_API_KEY
+            var env = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY");
+            if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
+
+            // 回退 2：ANTHROPIC_AUTH_TOKEN（兼容）
+            env = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN");
+            if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
+
+            return "";
         }
 
         private static string Resolve(string baseDir, string path)

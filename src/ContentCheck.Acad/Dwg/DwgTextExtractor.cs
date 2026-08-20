@@ -114,6 +114,9 @@ namespace ContentCheck.Acad.Dwg
             // 按阅读顺序（先上后下、同行从左到右）重排
             SortByReadingOrder(sheet.TextLines);
             sheet.FullText = string.Join("\n", sheet.TextLines.Select(l => l.Text));
+
+            // 规则聚合：按空行/序号/标题/缩进把相邻行分成段，便于校核与证据定位
+            TextSegmenter.Segment(sheet);
         }
 
         static void AddMText(DrawingSheet sheet, MText mt)
@@ -255,6 +258,9 @@ namespace ContentCheck.Acad.Dwg
             // 与整图提取一致：按阅读顺序重排后再拼全文
             SortByReadingOrder(sheet.TextLines);
             sheet.FullText = string.Join("\n", sheet.TextLines.Select(l => l.Text));
+
+            // 框选区域也做聚合，保证校核/证据链一致
+            TextSegmenter.Segment(sheet);
             return sheet;
         }
 

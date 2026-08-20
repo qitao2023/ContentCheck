@@ -3,6 +3,9 @@ bin/
 obj/
 out/
 
+# Config with API keys
+config.json
+
 # Database backups
 *.bak
 *.bak2

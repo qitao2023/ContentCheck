@@ -1,7 +1,8 @@
 {
-  "api_key": "",
-  "base_url": "https://api.deepseek.com/v1",
-  "model": "deepseek-v4-flash",
+  "provider": "mimo",
+  "api_key": "在这里填你的API Key",
+  "base_url": "https://api.xiaomimimo.com/v1",
+  "model": "mimo-v2.5",
   "temperature": 0.3,
   "max_tokens": 8192,
   "max_sheet_chars": 12000,

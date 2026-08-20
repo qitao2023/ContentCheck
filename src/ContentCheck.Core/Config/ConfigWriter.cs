@@ -55,15 +55,27 @@ namespace ContentCheck.Core.Config
             return ConfigLoader.Load(file);
         }
 
-        /// <summary>读 config.json 里原始的 api_key（未做环境变量解析），供对话框预填。</summary>
+        /// <summary>
+        /// 读取 API Key 供对话框预填：优先 config.json 原始值，为空时回退环境变量。
+        /// </summary>
         public static string ReadRawApiKey(string configPath)
         {
             try
             {
                 var root = JObject.Parse(File.ReadAllText(Path.GetFullPath(configPath), Encoding.UTF8));
-                return root["api_key"]?.Value<string>() ?? "";
+                var key = root["api_key"]?.Value<string>();
+                if (!string.IsNullOrWhiteSpace(key)) return key;
             }
-            catch { return ""; }
+            catch { }
+
+            // 回退环境变量
+            var env = System.Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY");
+            if (!string.IsNullOrWhiteSpace(env)) return env;
+
+            env = System.Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN");
+            if (!string.IsNullOrWhiteSpace(env)) return env;
+
+            return "";
         }
     }
 }
