@@ -6,7 +6,7 @@ set "MSBUILD=C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Cur
 set "TESTEXE=%ROOT%tests\ContentCheck.Tests\bin\Release\net472\ContentCheck.Tests.exe"
 
 if not exist "%TESTEXE%" (
-  "%MSBUILD%" "%ROOT%ContentCheck.sln" -t:Build -p:Configuration=Release -m -restore -v:minimal
+  "%MSBUILD%" "%ROOT%ContentCheck.slnx" -t:Build -p:Configuration=Release -m -restore -v:minimal
   if errorlevel 1 exit /b 1
 )
 

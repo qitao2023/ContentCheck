@@ -21,6 +21,9 @@ namespace ContentCheck.Acad.UI
         readonly HashSet<long> _initial;   // null = 无历史（默认全勾）
         readonly Dictionary<long, Provision> _provisionMap;
 
+        /// <summary>SyncGroup 程序化同步组复选框时的重入保护，避免 AfterCheck 级联误伤组内叶节点。</summary>
+        bool _suppressSync;
+
         public HashSet<long> SelectedIds { get; private set; } = new HashSet<long>();
 
         /// <summary>用户点击「写入CAD」时选中的条文；未触发时为 null。</summary>
@@ -96,7 +99,7 @@ namespace ContentCheck.Acad.UI
             btnRow.Controls.Add(btnOk, 4, 0);
             btnRow.Controls.Add(btnCancel, 5, 0);
 
-            new ToolTip().SetToolTip(btnWriteCad, "把左侧选中的条文以多行文字写入图纸（字高 300，行宽 5000）");
+            new ToolTip().SetToolTip(btnWriteCad, "把左侧选中的条文以单行文字写入图纸（字高 300，每行一个独立文字）");
             btnWriteCad.Click += (s, e) => OnWriteCad();
 
             // 树 - 使用 Panel 包装来控制位置
@@ -238,9 +241,18 @@ namespace ContentCheck.Acad.UI
 
         void OnAfterCheck(object sender, TreeViewEventArgs e)
         {
-            if (e.Action != TreeViewAction.Unknown) return;
+            if (_suppressSync) return;
+
             if (e.Node.Tag == null && e.Node.Nodes.Count > 0)
+            {
+                // 勾选/取消分组节点 → 级联到组内所有条文
                 SetGroup(e.Node, e.Node.Checked);
+            }
+            else if (e.Node.Tag != null && e.Node.Parent != null)
+            {
+                // 勾选/取消叶节点 → 刷新分组复选框（全勾=勾，否则=不勾）
+                SyncGroup(e.Node.Parent);
+            }
         }
 
         void OnAfterSelect(object sender, TreeViewEventArgs e)
@@ -304,7 +316,11 @@ namespace ContentCheck.Acad.UI
         void SyncGroup(TreeNode group)
         {
             bool allOn = group.Nodes.Count > 0 && group.Nodes.Cast<TreeNode>().All(n => n.Checked);
-            group.Checked = allOn;
+            if (group.Checked == allOn) return;
+            // 程序化同步组复选框时挂起重入，防止 AfterCheck 级联 SetGroup 清掉组内的部分勾选
+            _suppressSync = true;
+            try { group.Checked = allOn; }
+            finally { _suppressSync = false; }
         }
 
         /// <summary>把左右分栏拉到 50% 等宽，并夹在合法范围内。</summary>

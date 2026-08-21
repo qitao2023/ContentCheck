@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
-using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using AcadApp = Autodesk.AutoCAD.ApplicationServices.Application;
+using Autodesk.AutoCAD.DatabaseServices;
+using AcadColor = Autodesk.AutoCAD.Colors.Color;
+using Autodesk.AutoCAD.Geometry;
 using ContentCheck.Acad.Dwg;
 using ContentCheck.Acad.Report;
 using ContentCheck.Core.AI;
@@ -35,13 +38,27 @@ namespace ContentCheck.Acad.UI
         readonly RichTextBox _txtPreview = new RichTextBox();
         readonly DataGridView _grid = new DataGridView();
 
-        // 结论统计条
+        // 结论统计条（可点击筛选）
         readonly FlowLayoutPanel _flowSummary = new FlowLayoutPanel();
-        readonly Label _lblTotal = new Label();
-        Label _lblOk, _lblBad, _lblNa, _lblUnk;
+        UiTheme.VerdictChip _chipTotal, _chipOk, _chipBad, _chipNa, _chipUnk;
+        string _activeFilter = null;  // 当前筛选的结论类型（null = 不筛选）
 
         /// <summary>当前图纸的模型空间文字（校核数据源）。</summary>
         DrawingSheet _modelSheet;
+
+        /// <summary>当前红色标记框（下次点击时先删旧框再画新框）。</summary>
+        ObjectId _highlightBoxId = ObjectId.Null;
+
+        /// <summary>当前颜色高亮的实体 Handle 及其原始颜色（用于切换时恢复）。</summary>
+        string _colorHighlightHandle;
+        AcadColor _colorHighlightOrigColor;
+
+        /// <summary>识别文字预览：字符区间 → 文字行的映射（点击预览行 → CAD 定位文字及关联实体）。</summary>
+        readonly List<PreviewLineSpan> _previewSpans = new List<PreviewLineSpan>();
+
+        /// <summary>当前预览区蓝色高亮的行及其原始背景色（切换时先恢复上一行）。</summary>
+        PreviewLineSpan _previewHighlightSpan;
+        Color _previewHighlightOrigBg = Color.White;
 
         List<VerdictResult> _results = new List<VerdictResult>();
         string _resultSheetName = "";
@@ -55,6 +72,20 @@ namespace ContentCheck.Acad.UI
         readonly System.Windows.Forms.Timer _elapsedTimer = new System.Windows.Forms.Timer();
         readonly System.Diagnostics.Stopwatch _runSw = new System.Diagnostics.Stopwatch();
         string _lastStatus = "";
+
+        /// <summary>预览区中一个文字行的字符区间及其对应的 TextLine。</summary>
+        sealed class PreviewLineSpan
+        {
+            public readonly int Start;
+            public readonly int Length;
+            public readonly TextLine Line;
+            public PreviewLineSpan(int start, int length, TextLine line)
+            {
+                Start = start;
+                Length = length;
+                Line = line;
+            }
+        }
 
         sealed class RowTag
         {
@@ -88,13 +119,14 @@ namespace ContentCheck.Acad.UI
             
             // 设置非模态对话框属性
             this.Text = "图纸总说明规范校核";
-            this.Size = new Size(520, 800);
-            this.MinimumSize = new Size(480, 600);
+            this.Size = new Size(1040, 800);
+            this.MinimumSize = new Size(960, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.ShowInTaskbar = false;
-            this.TopMost = true;
-            this.FormBorderStyle = FormBorderStyle.SizableToolWindow;
+            this.FormBorderStyle = FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
             this.FormClosing += MainModelessDialog_FormClosing;
+            this.Load += MainModelessDialog_Load;
         }
 
         private void MainModelessDialog_FormClosing(object sender, FormClosingEventArgs e)
@@ -105,6 +137,71 @@ namespace ContentCheck.Acad.UI
                 e.Cancel = true;
                 this.Hide();
             }
+            // 关闭时删掉残留的红色标记框
+            EraseHighlightBox();
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        const int GWL_HWNDPARENT = -8;
+
+        /// <summary>AutoCAD 主窗口句柄，用于 ClampToOwner 计算边界。</summary>
+        IntPtr _ownerHwnd;
+
+        /// <summary>
+        /// 设置 Owner 为 AutoCAD 主窗口，使对话框始终限制在 AutoCAD 范围内，
+        /// 不会跑到其他软件上方。
+        /// </summary>
+        void MainModelessDialog_Load(object sender, EventArgs e)
+        {
+            try
+            {
+                _ownerHwnd = AcadApp.MainWindow.Handle;
+                if (_ownerHwnd != IntPtr.Zero)
+                    SetWindowLongPtr(this.Handle, GWL_HWNDPARENT, _ownerHwnd);
+            }
+            catch { /* 非致命，降级为普通浮动窗口 */ }
+        }
+
+        /// <summary>把本窗口限制在 AutoCAD 主窗口的客户区内。</summary>
+        void ClampToOwner()
+        {
+            if (_ownerHwnd == IntPtr.Zero) return;
+            var ownerForm = Form.FromHandle(_ownerHwnd);
+            if (ownerForm == null) return;
+
+            var r = ownerForm.ClientRectangle;
+            var ownerScreen = ownerForm.PointToScreen(new Point(r.X, r.Y));
+            var screenRect = new Rectangle(ownerScreen.X, ownerScreen.Y, r.Width, r.Height);
+
+            // 如果本窗口完全在 Owner 外面，拉回来
+            var winRect = this.DesktopBounds;
+            if (!screenRect.Contains(winRect))
+            {
+                int x = Math.Max(screenRect.X, Math.Min(winRect.X, screenRect.Right - this.Width));
+                int y = Math.Max(screenRect.Y, Math.Min(winRect.Y, screenRect.Bottom - this.Height));
+                this.Location = new Point(x, y);
+            }
+        }
+
+        void EraseHighlightBox()
+        {
+            if (_highlightBoxId.IsNull || !_highlightBoxId.IsValid) return;
+            try
+            {
+                var doc = AcadApp.DocumentManager.MdiActiveDocument;
+                if (doc == null) return;
+                using (doc.LockDocument())
+                using (var tr = doc.Database.TransactionManager.StartTransaction())
+                {
+                    var ent = tr.GetObject(_highlightBoxId, OpenMode.ForWrite, true) as Entity;
+                    if (ent != null && !ent.IsErased) ent.Erase();
+                    tr.Commit();
+                }
+            }
+            catch { }
+            _highlightBoxId = ObjectId.Null;
         }
 
         public void ReloadData()
@@ -129,7 +226,19 @@ namespace ContentCheck.Acad.UI
                     return;
                 }
                 UpdatePreview(_modelSheet);
-                SetStatus($"已提取模型空间文字（{_modelSheet.TextLines.Count} 行）。");
+                int bound = _modelSheet.TextLines
+                    .SelectMany(l => l.BoundEntities)
+                    .Select(b => b.Handle)
+                    .Distinct()
+                    .Count();
+                // 调试：显示关联实体的类型统计
+                var boundTypes = _modelSheet.TextLines
+                    .SelectMany(l => l.BoundEntities)
+                    .GroupBy(b => b.DxfName)
+                    .Select(g => $"{g.Key}:{g.Count()}")
+                    .ToList();
+                var typeInfo = boundTypes.Count > 0 ? $" [{string.Join(", ", boundTypes.Take(5))}]" : "";
+                SetStatus($"已提取模型空间文字（{_modelSheet.TextLines.Count} 行，关联 {bound} 个图面实体{typeInfo}）。");
             }
             catch (Exception ex)
             {
@@ -240,7 +349,12 @@ namespace ContentCheck.Acad.UI
                 }
                 _modelSheet = sheet;
                 UpdatePreview(sheet);
-                SetStatus($"已提取框选区域文字（{sheet.TextLines.Count} 行），可以开始校核。");
+                int bound = sheet.TextLines
+                    .SelectMany(l => l.BoundEntities)
+                    .Select(b => b.Handle)
+                    .Distinct()
+                    .Count();
+                SetStatus($"已提取框选区域文字（{sheet.TextLines.Count} 行，关联 {bound} 个实体），可以开始校核。");
             }
             catch (Exception ex)
             {
@@ -388,6 +502,7 @@ namespace ContentCheck.Acad.UI
 
         void FillGrid(CheckEngine.RunResult result)
         {
+            _activeFilter = null;   // 新一轮校核重置筛选
             _grid.SuspendLayout();
             _grid.Rows.Clear();
             _results = result.Results;
@@ -408,6 +523,7 @@ namespace ContentCheck.Acad.UI
             int na = result.Results.Count(x => x.Verdict == AiJsonParser.VERDICT_NA);
             int unk = result.Results.Count(x => x.Verdict == AiJsonParser.VERDICT_UNKNOWN);
             UpdateSummary(result.Results.Count, ok, bad, na, unk);
+            UpdateSummaryHighlight();
             string trunc = result.SheetTruncated ? "（总说明过长已截断）" : "";
             SetStatus($"校核完成：共 {result.Results.Count} 条。{trunc}");
         }
@@ -423,58 +539,193 @@ namespace ContentCheck.Acad.UI
             var doc = AcadApp.DocumentManager.MdiActiveDocument;
             if (doc == null || _modelSheet == null) return;
 
-            var handles = FindEvidenceHandles(_modelSheet, tag.Evidence);
-            if (handles.Count == 0)
+            var lines = EvidenceLocator.FindLines(_modelSheet, tag.Evidence);
+            if (lines.Count == 0)
             {
                 SetStatus("未在模型空间找到与依据原文匹配的文字。");
                 return;
             }
-            Highlighter.HighlightHandles(doc, handles);
-            SetStatus($"已高亮 {handles.Count} 处文字。");
+
+            // 文字实体 + 自动空间绑定的关联实体一起选中（文字 ↔ 图面实体绑定）
+            var textHandles = lines
+                .Select(l => l.Handle)
+                .Where(h => !string.IsNullOrWhiteSpace(h))
+                .Distinct()
+                .ToList();
+            var boundHandles = lines
+                .SelectMany(l => l.BoundEntities)
+                .Select(b => b.Handle)
+                .Where(h => !string.IsNullOrWhiteSpace(h))
+                .Distinct()
+                .ToList();
+
+            Highlighter.HighlightHandles(doc, textHandles.Concat(boundHandles));
+
+            // 颜色高亮：恢复上一个 → 标红当前（第一条匹配文字）
+            RestoreColorHighlight(doc);
+            if (textHandles.Count > 0
+                && Highlighter.SetHighlightColor(doc, textHandles[0], out var orig))
+            {
+                _colorHighlightHandle = textHandles[0];
+                _colorHighlightOrigColor = orig;
+            }
+
+            // 焦点转到 CAD + 画红色框标记文字位置
+            AcadApp.MainWindow.Focus();
+            DrawHighlightBox(doc, lines[0]);
+
+            SetStatus(boundHandles.Count > 0
+                ? $"已高亮 {textHandles.Count} 处文字及 {boundHandles.Count} 个关联图面实体。"
+                : $"已高亮 {textHandles.Count} 处文字。");
         }
 
-        static List<string> FindEvidenceHandles(DrawingSheet sheet, string evidence)
+        // ---------- 单击选中行 → CAD 红框定位原文 ----------
+
+        void grid_SelectionChanged(object sender, EventArgs e)
         {
-            var handles = new List<string>();
-            if (string.IsNullOrWhiteSpace(evidence) || evidence == "总说明未提及") return handles;
-
-            // 拆出 ≥6 字的中文片段（引号/顿号/标点分隔），用于在布局文字中定位
-            var frags = Regex.Split(evidence, @"[，。；、：:；,.()（）「」『』\s]+")
-                .Select(f => f.Trim())
-                .Where(f => f.Length >= 6)
-                .Distinct()
-                .OrderByDescending(f => f.Length)
-                .ToList();
-            if (frags.Count == 0) return handles;
-
-            // 优先在聚合段落里找（段落文本更完整，命中率更高）；找不到再回退逐行
-            if (sheet.Segments != null && sheet.Segments.Count > 0)
+            try
             {
-                foreach (var seg in sheet.Segments)
-                {
-                    if (string.IsNullOrWhiteSpace(seg.Text)) continue;
-                    if (!frags.Any(f => seg.Text.Contains(f))) continue;
+                if (_grid.CurrentRow == null || _grid.CurrentRow.Index < 0) return;
+                var tag = _grid.CurrentRow.Tag as RowTag;
+                if (tag == null) return;
 
-                    foreach (var line in seg.Lines)
+                var doc = AcadApp.DocumentManager.MdiActiveDocument;
+                if (doc == null || _modelSheet == null) return;
+
+                var lines = EvidenceLocator.FindLines(_modelSheet, tag.Evidence);
+                if (lines.Count == 0)
+                {
+                    SetStatus("未找到匹配文字，请双击行查看详情。");
+                    return;
+                }
+
+                // 焦点转到 CAD + 画红色框标记文字位置
+                DrawHighlightBox(doc, lines[0]);
+
+                // 颜色高亮：恢复上一个 → 标红当前（第一条匹配文字）
+                RestoreColorHighlight(doc);
+                var textHandles = lines
+                    .Select(l => l.Handle)
+                    .Where(h => !string.IsNullOrWhiteSpace(h))
+                    .Distinct()
+                    .ToList();
+                if (textHandles.Count > 0
+                    && Highlighter.SetHighlightColor(doc, textHandles[0], out var orig))
+                {
+                    _colorHighlightHandle = textHandles[0];
+                    _colorHighlightOrigColor = orig;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                SetStatus($"选中行时出错: {ex.Message}");
+            }
+        }
+
+        /// <summary>在 CAD 中画一个红色矩形框标记文字位置（先删旧框再画新框，不缩放不闪屏）。</summary>
+        void DrawHighlightBox(Autodesk.AutoCAD.ApplicationServices.Document doc, TextLine line)
+        {
+            try
+            {
+                using (doc.LockDocument())
+                using (var tr = doc.Database.TransactionManager.StartTransaction())
+                {
+                    // 删旧框
+                    if (!_highlightBoxId.IsNull && _highlightBoxId.IsValid)
                     {
-                        if (string.IsNullOrWhiteSpace(line.Handle)) continue;
-                        if (!handles.Contains(line.Handle))
-                            handles.Add(line.Handle);
+                        try
+                        {
+                            var old = tr.GetObject(_highlightBoxId, OpenMode.ForWrite, true) as Entity;
+                            if (old != null && !old.IsErased) old.Erase();
+                        }
+                        catch { }
+                        _highlightBoxId = ObjectId.Null;
                     }
-                }
-            }
 
-            if (handles.Count == 0)
-            {
-                foreach (var line in sheet.TextLines)
-                {
-                    if (string.IsNullOrWhiteSpace(line.Text) || string.IsNullOrWhiteSpace(line.Handle)) continue;
-                    if (frags.Any(f => line.Text.Contains(f)))
-                        if (!handles.Contains(line.Handle))
-                            handles.Add(line.Handle);
+                    // 拿文字实体的包围盒（有就用，没有就用 Position+Height 估算）
+                    var pad = line.Height * 0.5;
+                    double minX, minY, maxX, maxY;
+                    if (!string.IsNullOrWhiteSpace(line.Handle))
+                    {
+                        try
+                        {
+                            if (long.TryParse(line.Handle, System.Globalization.NumberStyles.HexNumber,
+                                System.Globalization.CultureInfo.InvariantCulture, out long h))
+                            {
+                                var id = doc.Database.GetObjectId(false, new Handle(h), 0);
+                                if (!id.IsNull && !id.IsErased)
+                                {
+                                    var ent = tr.GetObject(id, OpenMode.ForRead, true) as Entity;
+                                    if (ent != null)
+                                    {
+                                        var ext = ent.GeometricExtents;
+                                        minX = ext.MinPoint.X - pad;
+                                        minY = ext.MinPoint.Y - pad;
+                                        maxX = ext.MaxPoint.X + pad;
+                                        maxY = ext.MaxPoint.Y + pad;
+                                        goto draw;
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                    // 估算：文字插入点往右 ~15字高，上下各留半个字高
+                    minX = line.Position.X - pad;
+                    minY = line.Position.Y - line.Height * 1.5 - pad;
+                    maxX = line.Position.X + line.Height * 15 + pad;
+                    maxY = line.Position.Y + line.Height * 0.5 + pad;
+
+                draw:
+                    // 检查目标图层是否锁定
+                    var targetLayer = doc.Database.Clayer;
+                    var layerTable = (LayerTable)tr.GetObject(doc.Database.LayerTableId, OpenMode.ForRead);
+                    if (layerTable.Has(targetLayer))
+                    {
+                        var layer = (LayerTableRecord)tr.GetObject(targetLayer, OpenMode.ForRead);
+                        if (layer.IsLocked)
+                        {
+                            // 解锁图层
+                            layer.UpgradeOpen();
+                            layer.IsLocked = false;
+                        }
+                    }
+
+                    var bt = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
+                    var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                    var pl = new Polyline();
+                    pl.AddVertexAt(0, new Point2d(minX, minY), 0, 0, 0);
+                    pl.AddVertexAt(1, new Point2d(maxX, minY), 0, 0, 0);
+                    pl.AddVertexAt(2, new Point2d(maxX, maxY), 0, 0, 0);
+                    pl.AddVertexAt(3, new Point2d(minX, maxY), 0, 0, 0);
+                    pl.Closed = true;
+                    pl.ColorIndex = 1; // 红色
+
+                    ms.AppendEntity(pl);
+                    tr.AddNewlyCreatedDBObject(pl, true);
+                    _highlightBoxId = pl.ObjectId;
+
+                    tr.Commit();
                 }
+
+                // 刷新显示
+                doc.TransactionManager.QueueForGraphicsFlush();
+                doc.Editor.Regen();
             }
-            return handles;
+            catch (System.Exception ex)
+            {
+                // 画框失败不影响主流程
+                SetStatus($"画红框失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>恢复上一个颜色高亮实体的原始颜色。</summary>
+        void RestoreColorHighlight(Autodesk.AutoCAD.ApplicationServices.Document doc)
+        {
+            if (string.IsNullOrEmpty(_colorHighlightHandle)) return;
+            Highlighter.RestoreEntityColor(doc, _colorHighlightHandle, _colorHighlightOrigColor);
+            _colorHighlightHandle = null;
         }
 
         // ---------- 导出报告 ----------
@@ -519,23 +770,23 @@ namespace ContentCheck.Acad.UI
 
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, BackColor = UiTheme.Bg };
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));  // 设置卡片
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));   // 结论统计条
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));   // 状态
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));   // 进度
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));   // 识别文字标题
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));  // 识别文字预览
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));   // 结果表
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));   // 结论统计条
 
             _progress.Dock = DockStyle.Fill;
             _grid.Dock = DockStyle.Fill;
 
             root.Controls.Add(BuildSettingsCard(), 0, 0);
-            root.Controls.Add(BuildSummaryBar(), 0, 1);
-            root.Controls.Add(BuildStatusRow(), 0, 2);
-            root.Controls.Add(_progress, 0, 3);
-            root.Controls.Add(BuildPreviewRow(), 0, 4);
-            root.Controls.Add(_txtPreview, 0, 5);
-            root.Controls.Add(_grid, 0, 6);
+            root.Controls.Add(BuildStatusRow(), 0, 1);
+            root.Controls.Add(_progress, 0, 2);
+            root.Controls.Add(BuildPreviewRow(), 0, 3);
+            root.Controls.Add(_txtPreview, 0, 4);
+            root.Controls.Add(_grid, 0, 5);
+            root.Controls.Add(BuildSummaryBar(), 0, 6);
 
             ResultGridSetup.Configure(_grid);
             Controls.Add(root);
@@ -603,44 +854,89 @@ namespace ContentCheck.Acad.UI
             return card;
         }
 
-        /// <summary>结论统计条：共N条 · 符合n · 不符合n · 未涉及n · 无法判断n。</summary>
+        /// <summary>结论统计条：[共N条] [符合] [不符合] [未涉及] [无法判断]（药丸按钮可筛选）。</summary>
         Control BuildSummaryBar()
         {
             _flowSummary.Dock = DockStyle.Fill;
-            _flowSummary.FlowDirection = FlowDirection.LeftToRight;
+            _flowSummary.FlowDirection = System.Windows.Forms.FlowDirection.LeftToRight;
             _flowSummary.WrapContents = false;
-            _flowSummary.Padding = new Padding(2, 5, 0, 0);
+            _flowSummary.Padding = new Padding(2, 2, 0, 0);
             _flowSummary.BackColor = UiTheme.Bg;
             _flowSummary.Margin = Padding.Empty;
 
-            _lblTotal.Font = UiTheme.UiFontBold(9f);
-            _lblTotal.ForeColor = UiTheme.TextMain;
-            _lblTotal.AutoSize = true;
-            _lblTotal.Margin = new Padding(0, 2, 0, 0);
-            _lblOk = SummaryLabel("符合 0", UiTheme.VerdictOk);
-            _lblBad = SummaryLabel("不符合 0", UiTheme.VerdictBad);
-            _lblNa = SummaryLabel("未涉及 0", UiTheme.VerdictNa);
-            _lblUnk = SummaryLabel("无法判断 0", UiTheme.VerdictUnknown);
+            _chipTotal = new UiTheme.VerdictChip("共 0 条", "__all__");
+            _chipTotal.Active = true;  // 默认选中态（显示全部）
 
-            _flowSummary.Controls.Add(_lblTotal);
-            _flowSummary.Controls.Add(_lblOk);
-            _flowSummary.Controls.Add(_lblBad);
-            _flowSummary.Controls.Add(_lblNa);
-            _flowSummary.Controls.Add(_lblUnk);
+            _chipOk = new UiTheme.VerdictChip("符合 0", AiJsonParser.VERDICT_OK);
+            _chipBad = new UiTheme.VerdictChip("不符合 0", AiJsonParser.VERDICT_BAD);
+            _chipNa = new UiTheme.VerdictChip("未涉及 0", AiJsonParser.VERDICT_NA);
+            _chipUnk = new UiTheme.VerdictChip("无法判断 0", AiJsonParser.VERDICT_UNKNOWN);
+
+            foreach (var chip in new UiTheme.VerdictChip[] { _chipTotal, _chipOk, _chipBad, _chipNa, _chipUnk })
+            {
+                chip.Margin = new Padding(4, 1, 0, 1);
+                chip.Click += Chip_Click;
+            }
+            new ToolTip().SetToolTip(_chipTotal, "点击显示全部");
+            new ToolTip().SetToolTip(_chipOk, "点击只显示「符合」，再点取消");
+            new ToolTip().SetToolTip(_chipBad, "点击只显示「不符合」，再点取消");
+            new ToolTip().SetToolTip(_chipNa, "点击只显示「未涉及」，再点取消");
+            new ToolTip().SetToolTip(_chipUnk, "点击只显示「无法判断」，再点取消");
+
+            _flowSummary.Controls.Add(_chipTotal);
+            _flowSummary.Controls.Add(_chipOk);
+            _flowSummary.Controls.Add(_chipBad);
+            _flowSummary.Controls.Add(_chipNa);
+            _flowSummary.Controls.Add(_chipUnk);
             _flowSummary.Visible = false;
             return _flowSummary;
         }
 
-        static Label SummaryLabel(string text, Color color)
+        void Chip_Click(object sender, EventArgs e)
         {
-            return new Label
+            var chip = sender as UiTheme.VerdictChip;
+            if (chip == null) return;
+
+            if (chip.Verdict == "__all__")
+                _activeFilter = null;           // "共N条" 点击 = 显示全部
+            else if (_activeFilter == chip.Verdict)
+                _activeFilter = null;           // 再点一次取消
+            else
+                _activeFilter = chip.Verdict;
+
+            ApplyFilter();
+            UpdateSummaryHighlight();
+        }
+
+        /// <summary>按 _activeFilter 过滤结果表行（null = 全部显示）。</summary>
+        void ApplyFilter()
+        {
+            _grid.SuspendLayout();
+            foreach (DataGridViewRow row in _grid.Rows)
             {
-                Text = text,
-                ForeColor = color,
-                Font = UiTheme.UiFontBold(9f),
-                AutoSize = true,
-                Margin = new Padding(8, 2, 0, 0),
-            };
+                if (_activeFilter == null)
+                {
+                    row.Visible = true;
+                }
+                else
+                {
+                    var cell = row.Cells["结论"];
+                    row.Visible = cell != null && string.Equals(cell.Value?.ToString(), _activeFilter, StringComparison.Ordinal);
+                }
+            }
+            _grid.ResumeLayout();
+
+            int visible = _grid.Rows.Cast<DataGridViewRow>().Count(r => r.Visible);
+            if (_activeFilter != null)
+                SetStatus($"筛选「{_activeFilter}」：显示 {visible} 条（共 {_results.Count} 条）。点击统计标签可取消。");
+        }
+
+        /// <summary>高亮当前激活的筛选芯片，"共N条" 在无筛选时激活。</summary>
+        void UpdateSummaryHighlight()
+        {
+            _chipTotal.Active = _activeFilter == null;
+            foreach (var chip in new[] { _chipOk, _chipBad, _chipNa, _chipUnk })
+                chip.Active = chip.Verdict == _activeFilter;
         }
 
         Control BuildStatusRow()
@@ -667,6 +963,7 @@ namespace ContentCheck.Acad.UI
 
             _txtPreview.Dock = DockStyle.Fill;
             _txtPreview.ReadOnly = true;
+            _txtPreview.HideSelection = false;
             _txtPreview.ScrollBars = RichTextBoxScrollBars.Vertical;
             _txtPreview.WordWrap = false;
             _txtPreview.DetectUrls = false;
@@ -678,9 +975,10 @@ namespace ContentCheck.Acad.UI
             return _lblPreviewTitle;
         }
 
-        /// <summary>把提取到的文字填入预览区。</summary>
+        /// <summary>把提取到的文字填入预览区，并记录每个文字行的字符区间（供点击定位）。</summary>
         void UpdatePreview(DrawingSheet sheet)
         {
+            _previewSpans.Clear();
             if (sheet == null || sheet.TextLines.Count == 0)
             {
                 _lblPreviewTitle.Text = "识别文字";
@@ -688,22 +986,32 @@ namespace ContentCheck.Acad.UI
                 return;
             }
             int segCount = sheet.Segments != null ? sheet.Segments.Count : 0;
+            int boundCount = sheet.TextLines
+                .SelectMany(l => l.BoundEntities)
+                .Select(b => b.Handle)
+                .Distinct()
+                .Count();
             _lblPreviewTitle.Text = segCount > 0
-                ? $"识别文字（{sheet.TextLines.Count} 行，{segCount} 段）"
-                : $"识别文字（{sheet.TextLines.Count} 行）";
+                ? $"识别文字（{sheet.TextLines.Count} 行，{segCount} 段，关联 {boundCount} 个实体）"
+                : $"识别文字（{sheet.TextLines.Count} 行，关联 {boundCount} 个实体）";
+
+            _txtPreview.Clear();
+            _previewHighlightSpan = null;
             // 有分段时用彩色背景高亮每个段落；否则回退到纯文本
             if (sheet.Segments != null && sheet.Segments.Count > 0)
             {
-                _txtPreview.Clear();
                 for (int i = 0; i < sheet.Segments.Count; i++)
                 {
                     var seg = sheet.Segments[i];
                     var bg = UiTheme.SegmentBg(i);
-                    string body = (seg.Text ?? "").Replace("\n", "\r\n");
-
                     _txtPreview.SelectionBackColor = bg;
                     _txtPreview.SelectionFont = UiTheme.UiFont(9f);
-                    _txtPreview.AppendText(body);
+
+                    // 逐行追加并记录区间：行间用 \r\n，段间用单个 \n（与旧版拼接结果一致）
+                    for (int j = 0; j < seg.Lines.Count; j++)
+                    {
+                        AppendPreviewLine(seg.Lines[j], j < seg.Lines.Count - 1);
+                    }
 
                     // 段落之间仅加一个换行做分隔（不是空行）
                     if (i < sheet.Segments.Count - 1)
@@ -715,8 +1023,113 @@ namespace ContentCheck.Acad.UI
             }
             else
             {
-                _txtPreview.Text = (sheet.FullText ?? "").Replace("\n", "\r\n");
+                for (int i = 0; i < sheet.TextLines.Count; i++)
+                {
+                    AppendPreviewLine(sheet.TextLines[i], i < sheet.TextLines.Count - 1);
+                }
             }
+        }
+
+        /// <summary>向预览区追加一行文字（记录其字符区间），行间以 \r\n 分隔。</summary>
+        void AppendPreviewLine(TextLine line, bool withSeparator)
+        {
+            var text = line.Text ?? "";
+            int start = _txtPreview.TextLength;
+            _txtPreview.AppendText(text);
+            _previewSpans.Add(new PreviewLineSpan(start, text.Length, line));
+            if (withSeparator)
+                _txtPreview.AppendText("\r\n");
+        }
+
+        /// <summary>根据点击的字符位置找到对应的文字行。</summary>
+        TextLine FindLineAt(int charIndex)
+        {
+            if (charIndex < 0) return null;
+            foreach (var s in _previewSpans)
+            {
+                if (charIndex >= s.Start && charIndex < s.Start + s.Length)
+                    return s.Line;
+            }
+            return null;
+        }
+
+        /// <summary>根据点击的字符位置找到对应的行区间。</summary>
+        PreviewLineSpan FindSpanAt(int charIndex)
+        {
+            if (charIndex < 0) return null;
+            foreach (var s in _previewSpans)
+            {
+                if (charIndex >= s.Start && charIndex < s.Start + s.Length)
+                    return s;
+            }
+            return null;
+        }
+
+        /// <summary>在预览区高亮指定行（蓝底白字），并清除上一行的高亮。</summary>
+        void SetPreviewHighlight(PreviewLineSpan span)
+        {
+            if (span == null) return;
+            // 清除上一行
+            if (_previewHighlightSpan != null)
+            {
+                _txtPreview.SelectionStart = _previewHighlightSpan.Start;
+                _txtPreview.SelectionLength = _previewHighlightSpan.Length;
+                _txtPreview.SelectionBackColor = _previewHighlightOrigBg;
+                _txtPreview.SelectionColor = UiTheme.TextMain;
+            }
+            // 保存当前行的原始背景色，再标蓝
+            _txtPreview.SelectionStart = span.Start;
+            _txtPreview.SelectionLength = 1;
+            _previewHighlightOrigBg = _txtPreview.SelectionBackColor;
+            _txtPreview.SelectionLength = span.Length;
+            _txtPreview.SelectionBackColor = UiTheme.Accent;
+            _txtPreview.SelectionColor = Color.White;
+            _previewHighlightSpan = span;
+            _txtPreview.SelectionLength = 0;
+        }
+
+        /// <summary>点击识别文字预览中的一行 → 在 CAD 中选中该行文字及其关联图面实体。</summary>
+        void txtPreview_MouseClick(object sender, MouseEventArgs e)
+        {
+            if (_modelSheet == null) return;
+            var doc = AcadApp.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+
+            var span = FindSpanAt(_txtPreview.GetCharIndexFromPosition(e.Location));
+            if (span == null || string.IsNullOrWhiteSpace(span.Line.Text)) return;
+            var line = span.Line;
+
+            // 预览区蓝底白字高亮
+            SetPreviewHighlight(span);
+
+            var textHandles = string.IsNullOrWhiteSpace(line.Handle)
+                ? new List<string>()
+                : new List<string> { line.Handle };
+            var boundHandles = line.BoundEntities
+                .Select(b => b.Handle)
+                .Where(h => !string.IsNullOrWhiteSpace(h))
+                .Distinct()
+                .ToList();
+
+            Highlighter.HighlightHandles(doc, textHandles.Concat(boundHandles));
+
+            // 颜色高亮：恢复上一个 → 标红当前
+            RestoreColorHighlight(doc);
+            if (!string.IsNullOrWhiteSpace(line.Handle)
+                && Highlighter.SetHighlightColor(doc, line.Handle, out var orig))
+            {
+                _colorHighlightHandle = line.Handle;
+                _colorHighlightOrigColor = orig;
+            }
+
+            // 焦点转到 CAD + 画红色框标记文字位置
+            AcadApp.MainWindow.Focus();
+            DrawHighlightBox(doc, line);
+
+            var preview = line.Text.Length > 20 ? line.Text.Substring(0, 20) + "…" : line.Text;
+            SetStatus(boundHandles.Count > 0
+                ? $"已选中「{preview}」所在文字实体及 {boundHandles.Count} 个关联图面实体。"
+                : $"已选中「{preview}」所在文字实体。");
         }
 
         static Label MidLabel(string text)
@@ -734,11 +1147,11 @@ namespace ContentCheck.Acad.UI
 
         void UpdateSummary(int total, int ok, int bad, int na, int unk)
         {
-            _lblTotal.Text = $"共 {total} 条";
-            _lblOk.Text = $"符合 {ok}";
-            _lblBad.Text = $"不符合 {bad}";
-            _lblNa.Text = $"未涉及 {na}";
-            _lblUnk.Text = $"无法判断 {unk}";
+            _chipTotal.Text = $"共 {total} 条";
+            _chipOk.Text = $"符合 {ok}";
+            _chipBad.Text = $"不符合 {bad}";
+            _chipNa.Text = $"未涉及 {na}";
+            _chipUnk.Text = $"无法判断 {unk}";
             _flowSummary.Visible = total > 0;
         }
 
@@ -750,6 +1163,9 @@ namespace ContentCheck.Acad.UI
             _btnReport.Click += btnReport_Click;
             _btnSettings.Click += btnSettings_Click;
             _grid.CellDoubleClick += grid_CellDoubleClick;
+            _grid.SelectionChanged += grid_SelectionChanged;
+            _txtPreview.MouseClick += txtPreview_MouseClick;
+            new ToolTip().SetToolTip(_txtPreview, "点击预览中的文字行：在 CAD 中定位该行文字及其关联图面实体");
 
             _elapsedTimer.Interval = 1000;
             _elapsedTimer.Tick += (s, e) =>
@@ -771,6 +1187,19 @@ namespace ContentCheck.Acad.UI
                 PluginEnv.Config = saved;
                 SetStatus("设置已保存，将在下次校核时生效。");
             }
+        }
+
+        /// <summary>窗口拖动/缩放结束后，确保不超出 AutoCAD 主窗口边界。</summary>
+        protected override void OnResizeEnd(EventArgs e)
+        {
+            base.OnResizeEnd(e);
+            ClampToOwner();
+        }
+
+        protected override void OnMove(EventArgs e)
+        {
+            base.OnMove(e);
+            ClampToOwner();
         }
 
         void SetStatus(string msg) => _lblStatus.Text = msg;

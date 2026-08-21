@@ -83,6 +83,7 @@ namespace ContentCheck.Acad.UI
         {
             var c = new DataGridViewTextBoxColumn
             {
+                Name = header,
                 HeaderText = header,
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
                 FillWeight = weight,
@@ -101,7 +102,7 @@ namespace ContentCheck.Acad.UI
         /// <summary>给整行结论列配色（主题色）。</summary>
         public static void ColorRow(DataGridViewRow row, string verdict)
         {
-            var col = row.Cells.Cast<DataGridViewCell>().FirstOrDefault(x => x.OwningColumn.HeaderText == "结论");
+            var col = row.Cells.Cast<DataGridViewCell>().FirstOrDefault(x => x.OwningColumn.Name == "结论");
             if (col == null) return;
             var c = col;
             switch (verdict)

@@ -9,7 +9,9 @@ rem ============================================================
 
 set "MSBUILD=C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"
 set "ROOT=%~dp0"
-set "SLN=%ROOT%ContentCheck.sln"
+set "SLN=%ROOT%ContentCheck.slnx"
+
+if not exist "%SLN%" set "SLN=%ROOT%ContentCheck.sln"
 
 if not exist "%MSBUILD%" (
   echo [ERROR] VS2022 MSBuild not found: %MSBUILD%

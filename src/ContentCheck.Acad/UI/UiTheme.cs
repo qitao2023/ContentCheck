@@ -1,4 +1,6 @@
+using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace ContentCheck.Acad.UI
@@ -11,9 +13,9 @@ namespace ContentCheck.Acad.UI
         public static readonly Color Card = Color.White;
         public static readonly Color Border = Color.FromArgb(0xDC, 0xE2, 0xEA);
 
-        // 强调
-        public static readonly Color Accent = Color.FromArgb(0x2D, 0x6C, 0xDF);
-        public static readonly Color AccentDark = Color.FromArgb(0x1E, 0x50, 0xB8);
+        // 强调（标准选中蓝 #3378CE）
+        public static readonly Color Accent = Color.FromArgb(51, 120, 206);
+        public static readonly Color AccentDark = Color.FromArgb(38, 95, 170);
         public static readonly Color AccentSoft = Color.FromArgb(0xE8, 0xEF, 0xFB);
 
         // 按钮 / 下拉框中性色（无彩色）
@@ -53,6 +55,7 @@ namespace ContentCheck.Acad.UI
 
         public static Font UiFont(float size = 9f) => new Font("Microsoft YaHei UI", size);
         public static Font UiFontBold(float size = 9f) => new Font("Microsoft YaHei UI", size, FontStyle.Bold);
+        public static Font UiFontBoldUnderline(float size = 9f) => new Font("Microsoft YaHei UI", size, FontStyle.Bold | FontStyle.Underline);
 
         /// <summary>卡片分区：白底 + 边框 + 内边距，可向其中添加行控件。</summary>
         public static Panel MakeCard()
@@ -91,10 +94,9 @@ namespace ContentCheck.Acad.UI
             b.Font = UiFont();
             b.UseVisualStyleBackColor = false;
             b.ForeColor = TextMain;
-            // 全部中性灰白：主按钮浅灰底 + 细边框，次按钮白底 + 细边框，悬停统一中灰
             b.BackColor = kind == ButtonKind.Primary ? BtnPrimaryBg : Card;
-            b.MouseEnter += (s, e) => { if (b.Enabled) b.BackColor = BtnHoverBg; };
-            b.MouseLeave += (s, e) => { if (b.Enabled) b.BackColor = kind == ButtonKind.Primary ? BtnPrimaryBg : Card; };
+            b.MouseEnter += (s, e) => { if (b.Enabled) { b.BackColor = Accent; b.ForeColor = Color.White; } };
+            b.MouseLeave += (s, e) => { if (b.Enabled) { b.BackColor = kind == ButtonKind.Primary ? BtnPrimaryBg : Card; b.ForeColor = TextMain; } };
             return b;
         }
 
@@ -116,6 +118,92 @@ namespace ContentCheck.Acad.UI
             cb.AutoSize = true;
             cb.Cursor = Cursors.Hand;
             return cb;
+        }
+
+        /// <summary>
+        /// 药丸按钮（Chip）：深蓝底白字圆角标签，用于筛选器。
+        /// 激活态加粗，未激活态常规字重。
+        /// </summary>
+        public class VerdictChip : Label
+        {
+            public string Verdict { get; }
+            static readonly Color ChipBg = Accent;             // #3378CE 选中蓝
+            static readonly Color ChipBgInactive = Color.White;
+            static readonly Color ChipTextInactive = TextMain; // #303A45
+            static readonly Color ChipText = Color.White;
+            bool _active;
+
+            public bool Active
+            {
+                get => _active;
+                set { _active = value; Invalidate(); }
+            }
+
+            public VerdictChip(string text, string verdict)
+            {
+                Verdict = verdict;
+                Text = text;
+                AutoSize = false;
+                Height = 24;
+                MinimumSize = new Size(0, 24);
+                Padding = new Padding(10, 2, 10, 2);
+                Cursor = Cursors.Hand;
+                Font = UiTheme.UiFontBold(9f);
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+                int radius = Height - 2;
+
+                // 背景
+                using (var bg = new SolidBrush(_active ? ChipBg : ChipBgInactive))
+                    FillPill(g, bg, rect, radius);
+
+                // 边框
+                using (var pen = new Pen(_active ? Accent : Border, _active ? 1.5f : 1f))
+                    DrawPill(g, pen, rect, radius);
+
+                // 文字
+                using (var brush = new SolidBrush(_active ? ChipText : ChipTextInactive))
+                {
+                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    g.DrawString(Text, _active ? UiFontBold(9f) : UiFont(9f), brush, rect, sf);
+                }
+            }
+
+            protected override void OnResize(EventArgs e)
+            {
+                base.OnResize(e);
+                Invalidate();
+            }
+
+            static void FillPill(Graphics g, Brush brush, Rectangle r, int d)
+            {
+                var path = new System.Drawing.Drawing2D.GraphicsPath();
+                path.AddArc(r.X, r.Y, d, d, 180, 90);
+                path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+                path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+                path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+                path.CloseFigure();
+                g.FillPath(brush, path);
+                path.Dispose();
+            }
+
+            static void DrawPill(Graphics g, Pen pen, Rectangle r, int d)
+            {
+                var path = new System.Drawing.Drawing2D.GraphicsPath();
+                path.AddArc(r.X, r.Y, d, d, 180, 90);
+                path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+                path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+                path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+                path.CloseFigure();
+                g.DrawPath(pen, path);
+                path.Dispose();
+            }
         }
     }
 }

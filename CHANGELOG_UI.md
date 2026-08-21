@@ -1,5 +1,38 @@
 # ContentCheck UI 修改变更日志
 
+## 版本 2.4.1 - 识别文字预览行点击定位
+
+### 主要变更
+
+- **预览区每行文字也可关联定位**：识别文字预览中点击任意一行，即可在 CAD 中选中该行文字及其自动绑定的图面实体
+  （与结果表双击定位同一套 Handle 解析与高亮逻辑），状态栏提示「已选中「…」所在文字及 N 个关联图面实体」。
+- **字符区间映射**：`UpdatePreview` 重建预览时逐行记录字符区间 → `TextLine` 映射（`PreviewLineSpan`），
+  点击通过 `GetCharIndexFromPosition` 反查所属文字行；分段模式与纯文本回退模式都支持。
+- **修改文件**：`src/ContentCheck.Acad/UI/MainModelessDialog.cs`、`MainPaletteUserControl.cs`
+
+## 版本 2.4.0 - 文字与图面实体自动绑定
+
+### 主要变更
+
+- **文字 ↔ 图面实体自动空间绑定**：提取文字时同步扫描每个文字周围的非文字实体（管线 / 图块 / 表格 / 尺寸 / 填充等），
+  按「距文字距离 ≤ 容差（取行字高与全图中位字高的较大者 × 3）」筛选，距离用曲线最近点（`GetClosestPointTo`，
+  支持 Line/Polyline/Circle/Arc/Spline 等真实几何），其余实体回退包围盒距离；每条文字最多绑定 6 个最近实体。
+  全图提取（`ExtractModel`）与框选提取（`CC_SELECTTEXT`）两条路径都生效，框选场景只在选中实体内绑定。
+- **双击结果同时选中文字与关联实体**：原来只高亮证据文字实体本身；现在匹配到的文字及其绑定的图面实体一起
+  `SetImpliedSelection` 选中（夹点可见），状态栏提示「已高亮 N 处文字及 M 个关联图面实体」。
+- **识别文字预览标题显示绑定数**：`识别文字（N 行，M 段，关联 K 个实体）`，状态栏同步提示。
+- **修复 Handle 十六进制解析**：`Handle.ToString()` 返回十六进制（如 `2F`），原 `long.TryParse` 按十进制解析，
+  含 A–F 的 Handle 会静默定位失败；改为 `NumberStyles.HexNumber`。
+- **证据定位逻辑收敛**：两套 UI 重复的 `FindEvidenceHandles` 合并到 `EvidenceLocator`（段落优先 + 逐行回退规则不变）。
+- **修复 build.bat 过期**：解决方案文件已改为 `ContentCheck.slnx`，脚本仍引用不存在的 `.sln`，已修复。
+- **修改文件**：
+  - `src/ContentCheck.Acad/Dwg/TextLine.cs`（新增 `BoundEntity` 数据模型与 `TextLine.BoundEntities`）
+  - `src/ContentCheck.Acad/Dwg/DwgTextExtractor.cs`（候选实体收集 + 自动空间绑定）
+  - `src/ContentCheck.Acad/Dwg/EvidenceLocator.cs`（新增，共享证据定位）
+  - `src/ContentCheck.Acad/UI/Highlighter.cs`（Handle 十六进制解析修复）
+  - `src/ContentCheck.Acad/UI/MainModelessDialog.cs`、`MainPaletteUserControl.cs`（双击定位 + 预览标题 + 状态提示）
+  - `build.bat`（解决方案引用修复）
+
 ## 版本 2.3.1 - 按钮与下拉框去彩色
 
 ### 主要变更
@@ -28,12 +61,14 @@
 ### 主要变更
 
 - **记住上次的条文勾选**：规范条文树形菜单的勾选状态持久化到 `provision_selections.json`（配置文件同目录），AutoCAD 重启、关闭并重新打开面板后，仍能恢复上次的勾选，不再每次打开都重置。
+- **修复「只勾 1 条」重开丢失**：根因是 `SyncGroup` 程序化同步组复选框时触发 `AfterCheck` 级联 `SetGroup`，把组内已设好的部分勾选清空。现加重入保护（`_suppressSync`），并区分「组节点级联整组」与「叶节点刷新组状态」两类事件。
 - **修复「全不选」无法记忆**：此前"空集合"与"从未勾选"无法区分，导致用户全不选后再次打开又变回全选。现在无历史勾选（`null`）才默认全选，用户明确保存的空集合表示全不选。
 - **新增文件**：
   - `src/ContentCheck.Core/Storage/ProvisionSelectionsStore.cs`：勾选状态 JSON 读写。
   - `src/ContentCheck.Acad/UI/ProvisionSelectionState.cs`：进程级共享持有者，非模态对话框与停靠面板共用同一份勾选并落盘。
+  - `tests/PickerRepro/`：条文选择框回归测试（勾选应用 / 用户操作 / 确定收集 / 持久化回读，10 项）。
 - **修改文件**：
-  - `src/ContentCheck.Acad/UI/ProvisionPickerDialog.cs`：`ApplyChecks` 支持 `null` 初始值（默认全勾），空集合按用户选择处理。
+  - `src/ContentCheck.Acad/UI/ProvisionPickerDialog.cs`：`ApplyChecks` 支持 `null` 初始值（默认全勾），空集合按用户选择处理；`OnAfterCheck`/`SyncGroup` 重入保护与级联修复。
   - `src/ContentCheck.Acad/UI/MainModelessDialog.cs`、`MainPaletteUserControl.cs`：改用 `ProvisionSelectionState` 读写勾选。
   - `tools/UiPreview/Program.cs`：预览工具传 `null` 保持默认全勾效果。
 

@@ -1,7 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -111,8 +111,9 @@ namespace ContentCheck.Acad
         }
 
         /// <summary>
-        /// 把选中的规范条文以多行文字（MText）写入模型空间：
-        /// 字高 300、行宽 5000，内容按每行约 25 字硬断行。插入点由用户在图纸中点选。
+        /// 把选中的规范条文以单行文字（DBText）写入模型空间：
+        /// 字高 300，每行一个 DBText 实体，行间距 = 字高 × 1.8。
+        /// 内容按每行约 25 字硬断行。插入点由用户在图纸中点选。
         /// </summary>
         [CommandMethod("CC_WRITECLAUSE")]
         public static void WriteClauseToCad()
@@ -137,24 +138,33 @@ namespace ContentCheck.Acad
                     return;
                 }
 
+                var lines = BuildTextLines(prov);
+                double textHeight = 300;
+                double lineSpacing = textHeight * 1.8;
+
                 using (var tr = doc.Database.TransactionManager.StartTransaction())
                 {
                     var bt = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
                     var ms = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    using (var mtext = new MText())
+
+                    for (int i = 0; i < lines.Count; i++)
                     {
-                        mtext.SetDatabaseDefaults();
-                        mtext.Location = pr.Value;
-                        mtext.Height = 300;
-                        mtext.Width = 5000;
-                        mtext.Contents = BuildMTextContent(prov);
-                        ms.AppendEntity(mtext);
-                        tr.AddNewlyCreatedDBObject(mtext, true);
+                        var dbText = new DBText();
+                        dbText.SetDatabaseDefaults();
+                        dbText.Position = new Point3d(
+                            pr.Value.X,
+                            pr.Value.Y - i * lineSpacing,
+                            pr.Value.Z);
+                        dbText.Height = textHeight;
+                        dbText.TextString = lines[i];
+                        ms.AppendEntity(dbText);
+                        tr.AddNewlyCreatedDBObject(dbText, true);
                     }
+
                     tr.Commit();
                 }
                 PendingWriteProvision = null;
-                doc.Editor.WriteMessage($"\n条文已写入图纸（{prov.CodeName} {prov.ClauseNumber}）。");
+                doc.Editor.WriteMessage($"\n条文已写入图纸（{prov.CodeName} {prov.ClauseNumber}，共 {lines.Count} 行）。");
             }
             catch (System.Exception ex)
             {
@@ -163,39 +173,33 @@ namespace ContentCheck.Acad
         }
 
         /// <summary>
-        /// 组装 MText 内容：仅条文全文（不含规范名称与编号）。
-        /// 按每行约 25 字硬断行（行宽减半后的效果），段落符 \P 断行；
-        /// 反斜杠、花括号先转义避免被当成格式码。
+        /// 将条文拆分为单行文字列表：仅条文全文（不含规范名称与编号）。
+        /// 按每行约 25 字硬断行，返回每行字符串。
         /// </summary>
-        static string BuildMTextContent(Provision p)
+        static List<string> BuildTextLines(Provision p)
         {
             var paragraphs = (p.ClauseText ?? "(无内容)")
                 .Replace("\r\n", "\n")
                 .Replace("\r", "\n")
                 .Split('\n');
 
-            var sb = new StringBuilder();
+            var lines = new List<string>();
             foreach (var para in paragraphs)
             {
                 var text = para.Trim();
                 if (text.Length == 0) continue;
-                AppendWrapped(sb, text, 25);
+                WrapIntoLines(lines, text, 25);
             }
-            // 去掉末尾多余的段落符 \P
-            if (sb.Length >= 2 && sb.ToString().EndsWith("\\P"))
-                sb.Length -= 2;
-            return sb.ToString();
+            return lines;
         }
 
-        /// <summary>把一段文字按每行最多 maxLen 个字符硬断行，行尾加 MText 段落符 \P。逐行转义，避免转义序列被 \P 拆开。</summary>
-        static void AppendWrapped(StringBuilder sb, string text, int maxLen)
+        /// <summary>把一段文字按每行最多 maxLen 个字符硬断行，逐行加入列表。</summary>
+        static void WrapIntoLines(List<string> lines, string text, int maxLen)
         {
             for (int i = 0; i < text.Length; i += maxLen)
             {
                 int len = Math.Min(maxLen, text.Length - i);
-                var chunk = text.Substring(i, len);
-                sb.Append(chunk.Replace("\\", "\\\\").Replace("{", "\\{").Replace("}", "\\}"));
-                sb.Append("\\P");
+                lines.Add(text.Substring(i, len));
             }
         }
     }

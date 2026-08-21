@@ -5,7 +5,7 @@ using ContentCheck.Core.Storage;
 namespace ContentCheck.Acad.UI
 {
     /// <summary>
-    /// 专业条文勾选状态的进程级持有者：MainModelessDialog 与 MainPaletteUserControl 共享同一份，
+    /// 专业条文勾选状态的进程级持有者：MainModelessDialog 使用，
     /// 并落盘到 provision_selections.json，保证 AutoCAD 重启 / 面板重建后仍记住上次勾选。
     /// 约定：Get 返回 null 表示该专业从未勾选过（打开选择框时默认全勾）；
     /// 返回非 null（可为空集合）表示用户明确的选择。

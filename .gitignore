@@ -17,6 +17,10 @@ provision_selections.json
 *.tmp
 tmpcc_build_check*/
 
+# AutoCAD lock files
+*.dwl
+*.dwl2
+
 # Visual Studio
 .vs/
 *.user

@@ -19,11 +19,22 @@ namespace ContentCheck.Acad.Report
             {
                 // 校核结果
                 var sheet = wb.CreateSheet("校核结果");
-                WriteHeader(sheet, wb);
+                var wrapStyle = wb.CreateCellStyle();
+                wrapStyle.WrapText = true;
+                var headerStyle = wb.CreateCellStyle();
+                headerStyle.FillForegroundColor = NPOI.HSSF.Util.HSSFColor.Grey25Percent.Index;
+                headerStyle.FillPattern = FillPattern.SolidForeground;
+                headerStyle.Alignment = HorizontalAlignment.Center;
+                WriteHeader(sheet, headerStyle);
                 for (int i = 0; i < results.Count; i++)
-                    WriteRow(sheet, i + 1, results[i]);
+                    WriteRow(sheet, i + 1, results[i], wrapStyle);
 
-                for (int c = 0; c < 6; c++) sheet.AutoSizeColumn(c);
+                // 按 UI 列宽权重设置 Excel 列宽（单位：1/256 字符宽）
+                int[] weights = { 44, 200, 300, 200, 160, 56 }; // 序号、识别原文、规范条文、AI分析、修改建议、结论
+                int totalWeight = 960;
+                int baseWidth = 120 * 256; // 基准列宽 ≈120字符宽，按权重分配
+                for (int c = 0; c < 6; c++)
+                    sheet.SetColumnWidth(c, baseWidth * weights[c] / totalWeight);
 
                 // 统计
                 var stat = wb.CreateSheet("统计");
@@ -53,16 +64,8 @@ namespace ContentCheck.Acad.Report
                 total.CreateCell(3).SetCellValue(results.Count(x => x.Verdict == "不符合"));
                 total.CreateCell(4).SetCellValue(results.Count(x => x.Verdict == "未涉及"));
                 total.CreateCell(5).SetCellValue(results.Count(x => x.Verdict == "无法判断"));
+                // 统计页列宽：自动适应内容宽度
                 for (int c = 0; c < 6; c++) stat.AutoSizeColumn(c);
-
-                // 信息（图纸/布局 + 导出时间）
-                var info = wb.CreateSheet("信息");
-                info.CreateRow(0).CreateCell(0).SetCellValue("图纸/布局");
-                info.CreateRow(0).CreateCell(1).SetCellValue(sheetName);
-                info.CreateRow(1).CreateCell(0).SetCellValue("导出时间");
-                info.CreateRow(1).CreateCell(1).SetCellValue(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                info.CreateRow(2).CreateCell(0).SetCellValue("条文总数");
-                info.CreateRow(2).CreateCell(1).SetCellValue(results.Count);
 
                 using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
                     wb.Write(fs);
@@ -83,32 +86,36 @@ namespace ContentCheck.Acad.Report
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
-        static void WriteHeader(ISheet sheet, XSSFWorkbook wb)
+        static void WriteHeader(ISheet sheet, ICellStyle headerStyle)
         {
             var row = sheet.CreateRow(0);
-            var style = wb.CreateCellStyle();
-            style.FillForegroundColor = NPOI.HSSF.Util.HSSFColor.Grey25Percent.Index;
-            style.FillPattern = FillPattern.SolidForeground;
-            style.Alignment = HorizontalAlignment.Center;
-
             string[] cols = { "序号", "识别原文", "规范条文", "AI分析", "修改建议", "结论" };
             for (int i = 0; i < cols.Length; i++)
             {
                 var cell = row.CreateCell(i);
                 cell.SetCellValue(cols[i]);
-                cell.CellStyle = style;
+                cell.CellStyle = headerStyle;
             }
         }
 
-        static void WriteRow(ISheet sheet, int r, VerdictResult x)
+        static void WriteRow(ISheet sheet, int r, VerdictResult x, ICellStyle wrapStyle)
         {
             var row = sheet.CreateRow(r);
+            // 序号、结论不需要自动换行
             row.CreateCell(0).SetCellValue(r.ToString());
-            row.CreateCell(1).SetCellValue(x.Evidence ?? "");
-            row.CreateCell(2).SetCellValue(ResultGridSetup.FormatProvision(x));
-            row.CreateCell(3).SetCellValue(x.Analysis ?? "");
-            row.CreateCell(4).SetCellValue(x.Suggestion ?? "");
+            SetWrapCell(row, 1, x.Evidence ?? "", wrapStyle);
+            SetWrapCell(row, 2, ResultGridSetup.FormatProvision(x), wrapStyle);
+            SetWrapCell(row, 3, x.Analysis ?? "", wrapStyle);
+            SetWrapCell(row, 4, x.Suggestion ?? "", wrapStyle);
             row.CreateCell(5).SetCellValue(x.Verdict ?? "");
+            row.ZeroHeight = false; // 行高不锁定，Excel 打开时按内容自适应
+        }
+
+        static void SetWrapCell(IRow row, int col, string value, ICellStyle wrapStyle)
+        {
+            var cell = row.CreateCell(col);
+            cell.SetCellValue(value);
+            cell.CellStyle = wrapStyle;
         }
     }
 }
