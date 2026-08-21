@@ -19,21 +19,22 @@ namespace ContentCheck.Acad.Report
             {
                 // 校核结果
                 var sheet = wb.CreateSheet("校核结果");
+                // 校核结果页单元格全部靠左靠上
                 var wrapStyle = wb.CreateCellStyle();
                 wrapStyle.WrapText = true;
-                wrapStyle.Alignment = HorizontalAlignment.Center;
-                wrapStyle.VerticalAlignment = VerticalAlignment.Center;
+                wrapStyle.Alignment = HorizontalAlignment.Left;
+                wrapStyle.VerticalAlignment = VerticalAlignment.Top;
                 var headerStyle = wb.CreateCellStyle();
                 headerStyle.FillForegroundColor = NPOI.HSSF.Util.HSSFColor.Grey25Percent.Index;
                 headerStyle.FillPattern = FillPattern.SolidForeground;
-                headerStyle.Alignment = HorizontalAlignment.Center;
-                headerStyle.VerticalAlignment = VerticalAlignment.Center;
-                var centerStyle = wb.CreateCellStyle();
-                centerStyle.Alignment = HorizontalAlignment.Center;
-                centerStyle.VerticalAlignment = VerticalAlignment.Center;
+                headerStyle.Alignment = HorizontalAlignment.Left;
+                headerStyle.VerticalAlignment = VerticalAlignment.Top;
+                var cellStyle = wb.CreateCellStyle();
+                cellStyle.Alignment = HorizontalAlignment.Left;
+                cellStyle.VerticalAlignment = VerticalAlignment.Top;
                 WriteHeader(sheet, headerStyle);
                 for (int i = 0; i < results.Count; i++)
-                    WriteRow(sheet, i + 1, results[i], wrapStyle, centerStyle);
+                    WriteRow(sheet, i + 1, results[i], wrapStyle, cellStyle);
 
                 // 按 UI 列宽权重设置 Excel 列宽（单位：1/256 字符宽）
                 int[] weights = { 44, 200, 300, 200, 160, 56 }; // 序号、识别原文、规范条文、AI分析、修改建议、结论
@@ -46,6 +47,8 @@ namespace ContentCheck.Acad.Report
                 var stat = wb.CreateSheet("统计");
                 var statHeaderStyle = wb.CreateCellStyle();
                 statHeaderStyle.CloneStyleFrom(headerStyle);
+                statHeaderStyle.Alignment = HorizontalAlignment.Center;
+                statHeaderStyle.VerticalAlignment = VerticalAlignment.Center;
                 var statCenterStyle = wb.CreateCellStyle();
                 statCenterStyle.Alignment = HorizontalAlignment.Center;
                 statCenterStyle.VerticalAlignment = VerticalAlignment.Center;
@@ -115,15 +118,15 @@ namespace ContentCheck.Acad.Report
             }
         }
 
-        static void WriteRow(ISheet sheet, int r, VerdictResult x, ICellStyle wrapStyle, ICellStyle centerStyle)
+        static void WriteRow(ISheet sheet, int r, VerdictResult x, ICellStyle wrapStyle, ICellStyle cellStyle)
         {
             var row = sheet.CreateRow(r);
-            SetCell(row, 0, r.ToString(), centerStyle);
+            SetCell(row, 0, r.ToString(), cellStyle);
             SetWrapCell(row, 1, x.Evidence ?? "", wrapStyle);
             SetWrapCell(row, 2, ResultGridSetup.FormatProvision(x), wrapStyle);
             SetWrapCell(row, 3, x.Analysis ?? "", wrapStyle);
             SetWrapCell(row, 4, x.Suggestion ?? "", wrapStyle);
-            SetCell(row, 5, x.Verdict ?? "", centerStyle);
+            SetCell(row, 5, x.Verdict ?? "", cellStyle);
             row.ZeroHeight = false; // 行高不锁定，Excel 打开时按内容自适应
         }
 
